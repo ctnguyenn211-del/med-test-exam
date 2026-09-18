@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VMU TestExam Pro - Hệ thống tryhard giật HỌC BỔNG của npct (Cloud Sync)</title>
+    <title>VMU TestExam Pro - Hệ thống tryhard giật HỌC BỔNG của npct</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <!-- FontAwesome Icons -->
@@ -28,13 +28,11 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // Gắn vào biến toàn cục để dùng chung trong script
         window.firebaseDB = db;
         window.firebaseDoc = doc;
         window.firebaseSetDoc = setDoc;
         window.firebaseGetDoc = getDoc;
 
-        // Tự động tải dữ liệu từ Cloud khi khởi động
         window.loadDataFromCloud();
     </script>
 </head>
@@ -49,7 +47,7 @@
                 </div>
                 <div>
                     <h1 class="font-bold text-lg leading-tight">VMU TestExam Pro</h1>
-                    <p class="text-xs text-red-200">Đồng bộ Cloud Real-time</p>
+                    <p class="text-xs text-red-200">Hệ thống tryhard giật HỌC BỔNG của npct</p>
                 </div>
             </div>
             <nav class="flex items-center space-x-2 md:space-x-4">
@@ -284,7 +282,6 @@
         let settings = { showAnswer: true, autoNext: false, shuffleQ: false, shuffleA: false };
         let activeQuestions = [];
 
-        // --- CLOUD SYNC FUNCTIONS ---
         async function loadDataFromCloud() {
             try {
                 if (!window.firebaseDB) return;
@@ -293,7 +290,6 @@
                 if (docSnap.exists()) {
                     appData = docSnap.data();
                 } else {
-                    // Dữ liệu mẫu ban đầu nếu cloud trống
                     appData = {
                         subjects: [{
                             name: "Sinh lý học",
@@ -336,7 +332,6 @@
             updateMistakeBadge();
         }
 
-        // --- KHỞI TẠO ---
         window.onload = function() {
             renderHome();
             updateMistakeBadge();
