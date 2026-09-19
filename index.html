@@ -1,763 +1,1793 @@
-// ============================================================
-// FIREBASE SYNC V2 - CHỐNG MẤT DỮ LIỆU / GHI ĐÈ DỮ LIỆU CŨ
-// ============================================================
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VMU TestExam Pro - Hệ thống tryhard giật HỌC BỔNG của npct</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Mammoth.js để đọc file Word (.docx) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { 
+            getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, updateDoc, onSnapshot 
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-// Trạng thái đồng bộ
-let syncTimeout = null;
-let appDataUnsub = null;
-let usersUnsub = null;
+        const firebaseConfig = {
+            apiKey: "AIzaSyCpbC9aaVJdLiscTP4D8dCqqvRn1tAalxg",
+            authDomain: "med-exam-app-bbbce.firebaseapp.com",
+            projectId: "med-exam-app-bbbce",
+            storageBucket: "med-exam-app-bbbce.firebasestorage.app",
+            messagingSenderId: "879842215036",
+            appId: "1:879842215036:web:bc8f61c1bc37ce184ef5f9",
+            measurementId: "G-36K7452DP4"
+        };
 
-let isAppDataLoadedFromCloud = false;
-let isAppDataSaving = false;
-let pendingAppDataSave = false;
-let lastSavedAppDataJSON = null;
-let lastCloudAppDataJSON = null;
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
 
-// ============================================================
-// HÀM TIỆN ÍCH
-// ============================================================
+        window.firebaseDB = db;
+        window.firebaseDoc = doc;
+        window.firebaseSetDoc = setDoc;
+        window.firebaseGetDoc = getDoc;
+        window.firebaseCollection = collection;
+        window.firebaseGetDocs = getDocs;
+        window.firebaseDeleteDoc = deleteDoc;
+        window.firebaseUpdateDoc = updateDoc;
+        window.firebaseOnSnapshot = onSnapshot;
 
-function cloneAppData(data) {
-    try {
-        return JSON.parse(JSON.stringify(data));
-    } catch (e) {
-        return { subjects: [] };
-    }
-}
+        window.addEventListener('DOMContentLoaded', () => {
+            if (typeof window.initAppSession === 'function') {
+                window.initAppSession();
+            }
+        });
+    </script>
+</head>
+<body class="bg-[#FFF5F8] text-slate-800 font-sans antialiased min-h-screen flex flex-col">
 
-function getAppDataJSON(data = appData) {
-    try {
-        return JSON.stringify(data);
-    } catch (e) {
-        console.error("Không thể stringify appData:", e);
-        return null;
-    }
-}
+    <!-- Navbar -->
+    <header class="bg-[#D6336C] text-white shadow-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-2">
+            <div class="flex items-center space-x-3 cursor-pointer" onclick="switchTab('home')">
+                <div class="bg-white text-[#D6336C] p-2 rounded-xl font-bold text-xl shadow shrink-0">
+                    <i class="fa-solid fa-stethoscope"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight">VMU TestExam Pro</h1>
+                    <p class="text-xs text-[#FFB6C1]">Hệ thống tryhard giật HỌC BỔNG của npct</p>
+                </div>
+            </div>
+            <nav class="flex items-center flex-wrap gap-2 md:gap-4">
+                <button onclick="switchTab('home')" id="nav-home" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-[#FF4081] transition"><i class="fa-solid fa-house mr-1"></i> Trang chủ</button>
+                <button onclick="switchTab('mistakes')" id="nav-mistakes" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-[#FF4081] transition relative"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Ôn câu sai <span id="badge-mistakes" class="ml-1 bg-[#FF4081] text-white text-xs px-2 py-0.5 rounded-full font-bold hidden">0</span></button>
+                <button onclick="switchTab('habit')" id="nav-habit" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-[#FF4081] transition"><i class="fa-solid fa-calendar-check mr-1"></i> Habit Tracker</button>
+                
+                <button onclick="openUsersModal()" id="nav-users-btn" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-[#FF4081] hover:bg-[#D6336C] transition hidden flex items-center">
+                    <i class="fa-solid fa-users-gear mr-1"></i> Duyệt Users
+                </button>
 
-function saveAppDataToLocal() {
-    try {
-        const json = getAppDataJSON();
+                <div class="flex items-center space-x-2 bg-[#b52658]/50 px-3 py-1.5 rounded-xl border border-[#FFB6C1]/40 text-sm">
+                    <i class="fa-solid fa-user-shield text-[#FFB6C1]" id="user-role-icon"></i>
+                    <span id="nav-username" class="font-medium">Khách</span>
+                    <button onclick="logoutAccount()" class="text-[#FFB6C1] hover:text-white ml-2 text-xs underline">Đăng xuất</button>
+                </div>
 
-        if (json) {
-            localStorage.setItem("vmu_local_exam_backup", json);
+                <div class="relative group" id="admin-data-menu">
+                    <button class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-[#FF4081] transition"><i class="fa-solid fa-database mr-1"></i> Dữ liệu</button>
+                    <div class="absolute right-0 mt-1 w-48 bg-white text-slate-700 rounded-lg shadow-xl py-2 hidden group-hover:block border border-slate-100 z-50">
+                        <button onclick="exportBackup()" class="w-full text-left px-4 py-2 text-sm hover:bg-[#FFF5F8] hover:text-[#D6336C] flex items-center"><i class="fa-solid fa-download mr-2 text-[#D6336C]"></i> Xuất dữ liệu (JSON)</button>
+                        <label class="w-full text-left px-4 py-2 text-sm hover:bg-[#FFF5F8] hover:text-[#D6336C] flex items-center cursor-pointer">
+                            <i class="fa-solid fa-upload mr-2 text-blue-600"></i> Nhập dữ liệu (JSON)
+                            <input type="file" accept=".json" class="hidden" onchange="importBackup(event)">
+                        </label>
+                    </div>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-grow max-w-7xl w-full mx-auto p-4 md:p-6">
+        
+        <!-- TAB 1: TRANG CHỦ -->
+        <div id="tab-home" class="space-y-6">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div>
+                    <h2 class="text-2xl font-bold text-slate-900">Danh Sách Môn Học & Đề Thi</h2>
+                    <p class="text-sm text-slate-500">Lựa chọn bài học để bắt đầu luyện đề y khoa.</p>
+                </div>
+                <div id="admin-action-buttons" class="flex flex-wrap gap-2 hidden">
+                    <button onclick="openSubjectModal()" class="bg-[#D6336C] hover:bg-[#FF4081] text-white px-4 py-2 rounded-xl text-sm font-medium transition shadow-sm flex items-center">
+                        <i class="fa-solid fa-plus mr-2"></i> Thêm Môn Học
+                    </button>
+                    <button onclick="openCreateExamModal()" class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-sm font-medium transition shadow-sm flex items-center">
+                        <i class="fa-solid fa-file-circle-plus mr-2"></i> Tạo Đề / Tải Folder Word
+                    </button>
+                </div>
+            </div>
+
+            <div id="subjects-container" class="space-y-4"></div>
+        </div>
+
+        <!-- TAB 2: LÀM BÀI THI -->
+        <div id="tab-exam" class="hidden space-y-6">
+            <div class="flex items-center justify-between bg-white px-6 py-4 rounded-2xl shadow-sm border border-slate-100">
+                <button onclick="switchTab('home')" class="text-slate-600 hover:text-[#D6336C] font-medium text-sm flex items-center transition">
+                    <i class="fa-solid fa-arrow-left mr-2"></i> Quay lại trang chủ
+                </button>
+                <h3 id="exam-title-header" class="font-bold text-lg text-slate-900 truncate max-w-xl">Tên bài học</h3>
+                <span id="exam-badge-subject" class="bg-[#FFF5F8] text-[#D6336C] text-xs font-semibold px-3 py-1 rounded-full border border-[#FFB6C1]">Môn học</span>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div class="space-y-6 lg:col-span-1">
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                        <h4 class="font-bold text-slate-800 text-sm uppercase tracking-wider border-b pb-2"><i class="fa-solid fa-chart-pie mr-2 text-[#D6336C]"></i> Kết quả</h4>
+                        <div class="space-y-3 text-sm">
+                            <div class="flex justify-between"><span class="text-slate-500">Đã hoàn thành:</span><span id="stat-completed" class="font-bold text-slate-800">0/0</span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">Đúng:</span><span id="stat-correct" class="font-bold text-emerald-600">0</span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">Điểm:</span><span id="stat-score" class="font-bold text-[#D6336C] text-base">0.00</span></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                        <h4 class="font-bold text-slate-800 text-sm uppercase tracking-wider border-b pb-2"><i class="fa-solid fa-gear mr-2 text-slate-600"></i> Tùy chỉnh</h4>
+                        <div class="space-y-4 text-sm">
+                            <div class="flex items-center justify-between"><span class="text-slate-600">Hiện đáp án ngay:</span><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" id="setting-show-answer" class="sr-only peer" checked onchange="toggleSettingShowAnswer(this)"><div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#D6336C]"></div></label></div>
+                            <div class="flex items-center justify-between"><span class="text-slate-600">Tự động chuyển câu:</span><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" id="setting-auto-next" class="sr-only peer" onchange="toggleSettingAutoNext(this)"><div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#D6336C]"></div></label></div>
+                            <div class="flex items-center justify-between"><span class="text-slate-600">Đảo câu hỏi:</span><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" id="setting-shuffle-q" class="sr-only peer" onchange="toggleShuffleQuestions(this)"><div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#D6336C]"></div></label></div>
+                            <div class="flex items-center justify-between"><span class="text-slate-600">Đảo đáp án:</span><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" id="setting-shuffle-a" class="sr-only peer" onchange="toggleShuffleAnswers(this)"><div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#D6336C]"></div></label></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                        <h4 class="font-bold text-slate-800 text-sm uppercase tracking-wider border-b pb-2"><i class="fa-solid fa-list-ol mr-2 text-slate-600"></i> Mục lục</h4>
+                        <div id="question-palette" class="grid grid-cols-5 gap-2 max-h-64 overflow-y-auto p-1"></div>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-3 space-y-6">
+                    <div id="question-container" class="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-100 space-y-6"></div>
+                    <div class="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                        <button onclick="prevQuestion()" id="btn-prev" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-2.5 rounded-xl font-medium text-sm transition flex items-center"><i class="fa-solid fa-arrow-left mr-2"></i> Câu trước</button>
+                        <button onclick="markUnsure()" class="bg-[#FFF5F8] hover:bg-[#FFB6C1]/30 text-[#D6336C] border border-[#FFB6C1] px-5 py-2.5 rounded-xl font-medium text-sm transition">Phân vân</button>
+                        <button onclick="nextQuestion()" id="btn-next" class="bg-[#D6336C] hover:bg-[#FF4081] text-white px-5 py-2.5 rounded-xl font-medium text-sm transition flex items-center">Câu sau <i class="fa-solid fa-arrow-right ml-2"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: ÔN TẬP CÂU SAI -->
+        <div id="tab-mistakes" class="hidden space-y-6">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center">
+                <div><h2 class="text-2xl font-bold text-slate-900">Sổ Tay Ôn Tập Câu Sai</h2><p class="text-sm text-slate-500">Tổng hợp các câu trả lời sai của riêng bạn.</p></div>
+                <button onclick="startMistakeReview()" id="btn-review-mistakes" class="bg-[#D6336C] hover:bg-[#FF4081] text-white px-5 py-2.5 rounded-xl font-medium text-sm transition shadow-sm flex items-center"><i class="fa-solid fa-rotate-right mr-2"></i> Luyện tập lại câu sai</button>
+            </div>
+            <div id="mistakes-container" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+        </div>
+
+        <!-- TAB 4: HABIT TRACKER -->
+        <div id="tab-habit" class="hidden space-y-6">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                    <div><h2 class="text-2xl font-bold text-slate-900">Habit Tracker - Tiến Độ Học Tập</h2><p class="text-sm text-slate-500">Duy trì thói quen luyện đề mỗi ngày.</p></div>
+                    <div class="flex items-center gap-4 bg-[#FFF5F8] px-4 py-3 rounded-2xl border border-[#FFB6C1]">
+                        <div class="text-[#D6336C] text-2xl font-bold"><i class="fa-solid fa-fire text-[#FF4081] mr-2"></i><span id="streak-count">0</span> ngày</div>
+                        <div class="text-xs text-[#D6336C] font-medium">Chuỗi Streak liên tiếp</div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-4" id="habit-grid"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- MODAL AUTH & USERS -->
+    <div id="modal-auth" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl space-y-6">
+            <div class="text-center space-y-2">
+                <div class="bg-[#FFF5F8] text-[#D6336C] w-12 h-12 rounded-2xl flex items-center justify-center mx-auto text-xl font-bold"><i class="fa-solid fa-stethoscope"></i></div>
+                <h3 class="text-2xl font-bold text-slate-900">VMU TestExam Pro</h3>
+                <p class="text-sm text-slate-500">Đăng nhập tài khoản cá nhân</p>
+            </div>
+
+            <div class="space-y-4 text-sm">
+                <div>
+                    <label class="block font-medium text-slate-700 mb-1">Tên đăng nhập</label>
+                    <input type="text" id="auth-username" placeholder="Nhập username..." class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]">
+                </div>
+                <div>
+                    <label class="block font-medium text-slate-700 mb-1">Mật khẩu</label>
+                    <input type="password" id="auth-password" placeholder="Nhập mật khẩu..." class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]">
+                </div>
+                <div id="auth-error-msg" class="text-rose-600 text-xs text-center font-medium hidden"></div>
+            </div>
+
+            <div class="space-y-3">
+                <button onclick="handleLogin()" class="w-full bg-[#D6336C] hover:bg-[#FF4081] text-white py-3 rounded-xl font-bold text-sm transition shadow-sm">Đăng Nhập</button>
+                <button onclick="handleRegister()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold text-sm transition">Đăng Ký Tài Khoản Mới</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-users" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b pb-3">
+                <h3 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-users-gear text-[#D6336C] mr-2"></i> Phê Duyệt Thành Viên</h3>
+                <button onclick="closeUsersModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div id="users-list-container" class="space-y-3"></div>
+            <div class="flex justify-end pt-2 border-t">
+                <button onclick="closeUsersModal()" class="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-subject" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 class="text-lg font-bold text-slate-900">Thêm Môn Học Mới</h3>
+            <input type="text" id="input-new-subject" placeholder="Nhập tên môn học..." class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C] text-sm">
+            <div class="flex justify-end space-x-3 pt-2">
+                <button onclick="closeSubjectModal()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-sm font-medium">Hủy</button>
+                <button onclick="saveNewSubject()" class="bg-[#D6336C] hover:bg-[#FF4081] text-white px-5 py-2 rounded-xl text-sm font-medium">Lưu môn học</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-exam" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b pb-3">
+                <h3 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-folder-tree text-[#D6336C] mr-2"></i> Tải Lên Folder / File Word Hàng Loạt</h3>
+                <button onclick="closeCreateExamModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="space-y-4 text-sm">
+                <div>
+                    <label class="block font-medium text-slate-700 mb-1">Chọn Môn Học Đích</label>
+                    <select id="modal-select-subject" onchange="updateChapterDropdown()" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></select>
+                </div>
+                
+                <div class="p-5 bg-[#FFF5F8] border-2 border-dashed border-[#FFB6C1] rounded-2xl space-y-3">
+                    <label class="block font-bold text-slate-800"><i class="fa-solid fa-folder-open text-[#FF4081] mr-2"></i> Cách 1: Tải lên các Folder chứa bài học (.docx)</label>
+                    <p class="text-xs text-slate-500">💡 Tên từng folder sẽ tự động làm tên Chương.</p>
+                    <input type="file" id="modal-input-folder" accept=".docx" multiple webkitdirectory directory class="w-full text-sm text-slate-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-[#D6336C] file:text-white hover:file:bg-[#FF4081] cursor-pointer">
+                </div>
+
+                <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <label class="block font-bold text-slate-800"><i class="fa-solid fa-file-word text-blue-600 mr-2"></i> Cách 2: Chọn các file Word (.docx) đơn lẻ</label>
+                    
+                    <div>
+                        <label class="block font-medium text-slate-700 mb-1 text-xs">Chọn chương đích:</label>
+                        <select id="modal-select-chapter" onchange="handleChapterSelectChange()" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C] text-sm">
+                        </select>
+                    </div>
+
+                    <div id="new-chapter-input-container" class="hidden">
+                        <label class="block font-medium text-slate-700 mb-1 text-xs">Nhập tên chương mới:</label>
+                        <input type="text" id="modal-input-new-chapter" placeholder="Ví dụ: Chương 2: Tuần hoàn..." class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C] text-sm">
+                    </div>
+
+                    <div>
+                        <label class="block font-medium text-slate-700 mb-1 text-xs">Chọn file Word (.docx):</label>
+                        <input type="file" id="modal-input-docs" accept=".docx" multiple class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3 pt-2 border-t">
+                <button onclick="closeCreateExamModal()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-sm font-medium">Hủy</button>
+                <button onclick="saveNewExam()" class="bg-[#D6336C] hover:bg-[#FF4081] text-white px-5 py-2 rounded-xl text-sm font-medium">Bắt Đầu Xử Lý & Nhập Đề</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-rename" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <h3 id="rename-modal-title" class="text-lg font-bold text-slate-900">Đổi tên</h3>
+            <input type="text" id="input-rename-val" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C] text-sm">
+            <div class="flex justify-end space-x-3 pt-2">
+                <button onclick="closeRenameModal()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-sm font-medium">Hủy</button>
+                <button onclick="confirmRename()" class="bg-[#D6336C] hover:bg-[#FF4081] text-white px-5 py-2 rounded-xl text-sm font-medium">Lưu</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-edit-question" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b pb-3">
+                <h3 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-pen-to-square text-[#D6336C] mr-2"></i> Sửa Câu Hỏi Hiện Tại</h3>
+                <button onclick="closeEditQuestionModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="space-y-3 text-sm">
+                <div>
+                    <label class="block font-medium text-slate-700 mb-1">Nội dung câu hỏi</label>
+                    <textarea id="edit-q-text" rows="3" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></textarea>
+                </div>
+                <div><label class="block font-medium text-slate-700 mb-1">Đáp án A</label><input type="text" id="edit-opt-0" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></div>
+                <div><label class="block font-medium text-slate-700 mb-1">Đáp án B</label><input type="text" id="edit-opt-1" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></div>
+                <div><label class="block font-medium text-slate-700 mb-1">Đáp án C</label><input type="text" id="edit-opt-2" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></div>
+                <div><label class="block font-medium text-slate-700 mb-1">Đáp án D</label><input type="text" id="edit-opt-3" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></div>
+                <div>
+                    <label class="block font-medium text-slate-700 mb-1">Đáp án đúng</label>
+                    <select id="edit-correct-ans" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]">
+                        <option value="0">A</option><option value="1">B</option><option value="2">C</option><option value="3">D</option>
+                    </select>
+                </div>
+                <div><label class="block font-medium text-slate-700 mb-1">Giải thích chi tiết</label><textarea id="edit-explanation" rows="3" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]" placeholder="Nhập giải thích cho câu hỏi này..."></textarea></div>
+            </div>
+            <div class="flex justify-end space-x-3 pt-2 border-t">
+                <button onclick="closeEditQuestionModal()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-sm font-medium">Hủy</button>
+                <button onclick="saveEditedQuestion()" class="bg-[#D6336C] hover:bg-[#FF4081] text-white px-5 py-2 rounded-xl text-sm font-medium">Lưu thay đổi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script xử lý ứng dụng -->
+    <script>
+        let appData = { subjects: [] };
+        let userPersonalData = { mistakes: [], habits: {} };
+        let currentUser = null;
+        let currentExam = null;
+        let currentExamRef = { sIdx: null, cIdx: null, eIdx: null };
+        let currentQuestionIndex = 0;
+        let userAnswers = {};
+        let unsureQuestions = {};
+        let settings = { showAnswer: true, autoNext: false, shuffleQ: false, shuffleA: false };
+        let activeQuestions = [];
+        let collapsedSubjects = {};
+        let collapsedChapters = {};
+        let renameTarget = null;
+        let syncTimeout = null;
+        let appDataUnsub = null;
+        let usersUnsub = null;
+
+        const ADMIN_PASSWORD = "212696";
+
+        window.initAppSession = async function() {
+            let session = localStorage.getItem("vmu_current_user");
+            if (session) {
+                try { currentUser = JSON.parse(session); } catch(e) {}
+            }
+
+            if (!currentUser) {
+                document.getElementById('modal-auth').classList.remove('hidden');
+            } else {
+                document.getElementById('modal-auth').classList.add('hidden');
+                updateNavbarUser();
+                startAppDataRealtimeSync();
+                await loadUserPersonalData();
+            }
+        };
+
+        function updateNavbarUser() {
+            document.getElementById('nav-username').innerText = currentUser.username;
+            const icon = document.getElementById('user-role-icon');
+            const usersBtn = document.getElementById('nav-users-btn');
+            const adminBtns = document.getElementById('admin-action-buttons');
+            const adminDataMenu = document.getElementById('admin-data-menu');
+
+            if (currentUser.role === 'admin') {
+                icon.className = "fa-solid fa-user-shield text-[#FFB6C1]";
+                usersBtn.classList.remove('hidden');
+                adminBtns.classList.remove('hidden');
+                adminDataMenu.classList.remove('hidden');
+            } else {
+                icon.className = "fa-solid fa-user text-emerald-300";
+                usersBtn.classList.add('hidden');
+                adminBtns.classList.add('hidden');
+                adminDataMenu.classList.add('hidden');
+            }
         }
-    } catch (e) {
-        console.error("Lỗi lưu backup local:", e);
-    }
-}
 
-function loadAppDataFromLocal() {
-    try {
-        const localData = localStorage.getItem("vmu_local_exam_backup");
+        async function handleLogin() {
+            let user = document.getElementById('auth-username').value.trim();
+            let pass = document.getElementById('auth-password').value;
+            let errEl = document.getElementById('auth-error-msg');
+            errEl.classList.add('hidden');
 
-        if (!localData) return false;
+            if (!user || !pass) {
+                errEl.innerText = "Vui lòng nhập đầy đủ tên và mật khẩu!";
+                errEl.classList.remove('hidden');
+                return;
+            }
 
-        const parsed = JSON.parse(localData);
+            if (user.toLowerCase() === 'admin' || pass === ADMIN_PASSWORD) {
+                if (pass === ADMIN_PASSWORD) {
+                    currentUser = { username: user, role: 'admin', status: 'approved' };
+                    localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
+                    document.getElementById('modal-auth').classList.add('hidden');
+                    updateNavbarUser();
+                    startAppDataRealtimeSync();
+                    await loadUserPersonalData();
+                    return;
+                }
+            }
 
-        if (
-            parsed &&
-            typeof parsed === "object" &&
-            Array.isArray(parsed.subjects)
-        ) {
-            appData = parsed;
-            return true;
+            try {
+                if (window.firebaseDB) {
+                    let docRef = window.firebaseDoc(window.firebaseDB, "users_list", user);
+                    let snap = await window.firebaseGetDoc(docRef);
+                    if (snap.exists()) {
+                        let data = snap.data();
+                        if (data.password === pass) {
+                            if (data.status !== 'approved') {
+                                errEl.innerText = "Tài khoản của bạn đang chờ Admin phê duyệt!";
+                                errEl.classList.remove('hidden');
+                                return;
+                            }
+                            currentUser = { username: user, role: 'member', status: 'approved' };
+                            localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
+                            document.getElementById('modal-auth').classList.add('hidden');
+                            updateNavbarUser();
+                            startAppDataRealtimeSync();
+                            await loadUserPersonalData();
+                            return;
+                        }
+                    }
+                }
+            } catch(e) {}
+
+            errEl.innerText = "Sai tên đăng nhập, mật khẩu hoặc chưa được duyệt!";
+            errEl.classList.remove('hidden');
         }
-    } catch (e) {
-        console.error("Lỗi đọc backup local:", e);
-    }
 
-    return false;
-}
+        async function handleRegister() {
+            let user = document.getElementById('auth-username').value.trim();
+            let pass = document.getElementById('auth-password').value;
+            let errEl = document.getElementById('auth-error-msg');
+            errEl.classList.add('hidden');
 
+            if (!user || !pass) {
+                errEl.innerText = "Vui lòng nhập đầy đủ tên và mật khẩu!";
+                errEl.classList.remove('hidden');
+                return;
+            }
 
-// ============================================================
-// BẮT ĐẦU REALTIME SYNC
-// ============================================================
+            if (user.toLowerCase() === 'admin') {
+                errEl.innerText = "Tên tài khoản không hợp lệ!";
+                errEl.classList.remove('hidden');
+                return;
+            }
 
-function startAppDataRealtimeSync() {
+            try {
+                if (window.firebaseDB) {
+                    let docRef = window.firebaseDoc(window.firebaseDB, "users_list", user);
+                    let snap = await window.firebaseGetDoc(docRef);
+                    if (snap.exists()) {
+                        errEl.innerText = "Tên đăng nhập đã tồn tại!";
+                        errEl.classList.remove('hidden');
+                        return;
+                    }
+                    await window.firebaseSetDoc(docRef, { username: user, password: pass, status: 'pending', role: 'member' });
+                    alert('Đăng ký thành công! Vui lòng chờ Admin phê duyệt.');
+                }
+            } catch(e) {
+                alert('Lỗi kết nối Cloud!');
+            }
+        }
 
-    // --------------------------------------------------------
-    // 1. HỦY LISTENER CŨ
-    // --------------------------------------------------------
+        function logoutAccount() {
+            if (appDataUnsub) appDataUnsub();
+            localStorage.removeItem("vmu_current_user");
+            currentUser = null;
+            document.getElementById('auth-username').value = '';
+            document.getElementById('auth-password').value = '';
+            document.getElementById('modal-auth').classList.remove('hidden');
+        }
 
-    if (appDataUnsub) {
-        try {
-            appDataUnsub();
-        } catch (e) {}
+        function openUsersModal() {
+            if (!currentUser || currentUser.role !== 'admin') return;
+            const container = document.getElementById('users-list-container');
+            container.innerHTML = `<p class="text-sm text-slate-400 text-center py-4">Đang kết nối Realtime...</p>`;
+            document.getElementById('modal-users').classList.remove('hidden');
 
-        appDataUnsub = null;
-    }
+            if (usersUnsub) usersUnsub();
 
-    isAppDataLoadedFromCloud = false;
+            try {
+                if (window.firebaseDB) {
+                    let colRef = window.firebaseCollection(window.firebaseDB, "users_list");
+                    usersUnsub = window.firebaseOnSnapshot(colRef, (querySnap) => {
+                        let html = '';
+                        querySnap.forEach((docSnap) => {
+                            let u = docSnap.data();
+                            let isPending = u.status === 'pending';
+                            html += `
+                                <div class="bg-slate-50 p-4 rounded-xl border flex justify-between items-center" id="user-row-${u.username}">
+                                    <div>
+                                        <h4 class="font-bold text-slate-800">${u.username}</h4>
+                                        <span class="text-xs px-2 py-0.5 rounded-full font-semibold ${isPending ? 'bg-[#FFF5F8] text-[#D6336C]' : 'bg-emerald-100 text-emerald-800'}" id="user-status-${u.username}">${isPending ? 'Chờ duyệt' : 'Đã duyệt'}</span>
+                                    </div>
+                                    <div class="space-x-2">
+                                        ${isPending ? `<button onclick="approveUser('${u.username}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">Phê duyệt</button>` : ''}
+                                        <button onclick="deleteUser('${u.username}')" class="bg-rose-100 hover:bg-rose-200 text-rose-700 px-3 py-1.5 rounded-lg text-xs font-bold transition">Xóa</button>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        container.innerHTML = html || `<p class="text-sm text-slate-400 text-center py-4">Chưa có thành viên nào.</p>`;
+                    });
+                }
+            } catch(e) {
+                container.innerHTML = `<p class="text-sm text-rose-500 text-center py-4">Lỗi kết nối Realtime.</p>`;
+            }
+        }
 
-    // --------------------------------------------------------
-    // 2. HIỂN THỊ LOCAL BACKUP TRƯỚC
-    // --------------------------------------------------------
+        function closeUsersModal() { 
+            if (usersUnsub) { usersUnsub(); usersUnsub = null; }
+            document.getElementById('modal-users').classList.add('hidden'); 
+        }
 
-    const hasLocalData = loadAppDataFromLocal();
+        async function approveUser(username) {
+            try {
+                if (window.firebaseDB) {
+                    let docRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
+                    await window.firebaseSetDoc(docRef, { status: 'approved' }, { merge: true });
+                }
+            } catch(e) {}
+        }
 
-    if (hasLocalData) {
-        console.log(
-            "[SYNC] Đã khôi phục dữ liệu từ localStorage:",
-            appData.subjects.length,
-            "subjects"
-        );
+        async function deleteUser(username) {
+            if (confirm(`Xóa user ${username}?`)) {
+                try {
+                    if (window.firebaseDB) {
+                        let docRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
+                        await window.firebaseDeleteDoc(docRef);
+                    }
+                } catch(e) {}
+            }
+        }
 
-        renderHome();
-    }
+        // ============================================================
+        // FIREBASE SYNC V2
+        // Chống mất dữ liệu, snapshot cũ ghi đè và reset appData khi
+        // Firebase chưa có document.
+        // ============================================================
 
-    // --------------------------------------------------------
-    // 3. KIỂM TRA FIREBASE
-    // --------------------------------------------------------
+        let isAppDataLoadedFromCloud = false;
+        let isAppDataSaving = false;
+        let pendingAppDataSave = false;
+        let lastSavedAppDataJSON = null;
+        let lastCloudAppDataJSON = null;
 
-    if (!window.firebaseDB) {
-        console.warn("[SYNC] Firebase chưa sẵn sàng.");
-        return;
-    }
+        function cloneAppData(data) {
+            try {
+                return JSON.parse(JSON.stringify(data));
+            } catch (e) {
+                return { subjects: [] };
+            }
+        }
 
-    try {
+        function getAppDataJSON(data = appData) {
+            try {
+                return JSON.stringify(data);
+            } catch (e) {
+                console.error("[SYNC] Không thể stringify appData:", e);
+                return null;
+            }
+        }
 
-        const docRef = window.firebaseDoc(
-            window.firebaseDB,
-            "users",
-            "my_data"
-        );
+        function saveAppDataToLocal() {
+            try {
+                const json = getAppDataJSON();
+                if (json) {
+                    localStorage.setItem("vmu_local_exam_backup", json);
+                }
+            } catch (e) {
+                console.error("[SYNC] Lỗi lưu backup local:", e);
+            }
+        }
 
-        // ----------------------------------------------------
-        // 4. REALTIME LISTENER
-        // ----------------------------------------------------
+        function loadAppDataFromLocal() {
+            try {
+                const localData = localStorage.getItem("vmu_local_exam_backup");
+                if (!localData) return false;
 
-        appDataUnsub = window.firebaseOnSnapshot(
-            docRef,
+                const parsed = JSON.parse(localData);
 
-            async (docSnap) => {
+                if (
+                    parsed &&
+                    typeof parsed === "object" &&
+                    Array.isArray(parsed.subjects)
+                ) {
+                    appData = parsed;
+                    return true;
+                }
+            } catch (e) {
+                console.error("[SYNC] Lỗi đọc backup local:", e);
+            }
 
+            return false;
+        }
+
+        // ------------------------------------------------------------
+        // Khởi động realtime sync
+        // ------------------------------------------------------------
+        function startAppDataRealtimeSync() {
+
+            if (appDataUnsub) {
+                try {
+                    appDataUnsub();
+                } catch (e) {}
+                appDataUnsub = null;
+            }
+
+            isAppDataLoadedFromCloud = false;
+            isAppDataSaving = false;
+            pendingAppDataSave = false;
+            lastSavedAppDataJSON = null;
+            lastCloudAppDataJSON = null;
+
+            // Hiển thị backup local trước để app không bị trắng khi mạng chậm.
+            const hasLocalData = loadAppDataFromLocal();
+
+            if (hasLocalData) {
                 console.log(
-                    "[SYNC] Firebase snapshot:",
-                    docSnap.exists()
+                    "[SYNC] Khôi phục local:",
+                    appData.subjects.length,
+                    "subjects"
+                );
+                renderHome();
+            }
+
+            if (!window.firebaseDB) {
+                console.warn("[SYNC] Firebase chưa sẵn sàng.");
+                return;
+            }
+
+            try {
+                const docRef = window.firebaseDoc(
+                    window.firebaseDB,
+                    "users",
+                    "my_data"
                 );
 
-                // ====================================================
-                // FIREBASE KHÔNG CÓ DOCUMENT
-                // ====================================================
+                appDataUnsub = window.firebaseOnSnapshot(
+                    docRef,
+                    async (docSnap) => {
 
-                if (!docSnap.exists()) {
+                        // Firebase chưa có document.
+                        // Tuyệt đối không reset appData thành [].
+                        if (!docSnap.exists()) {
 
-                    console.warn(
-                        "[SYNC] Firebase chưa có my_data."
-                    );
+                            console.warn("[SYNC] users/my_data chưa tồn tại.");
 
-                    /*
-                     * QUAN TRỌNG:
-                     *
-                     * KHÔNG ĐƯỢC:
-                     *
-                     * appData = { subjects: [] };
-                     *
-                     * vì như vậy sẽ xóa local data.
-                     */
+                            if (
+                                hasLocalData ||
+                                (appData &&
+                                 Array.isArray(appData.subjects) &&
+                                 appData.subjects.length > 0)
+                            ) {
+                                console.log(
+                                    "[SYNC] Cloud trống -> đẩy dữ liệu local lên Cloud."
+                                );
 
-                    if (hasLocalData || appData.subjects?.length > 0) {
+                                await forceSaveAppDataToCloud();
+                            } else {
+                                appData = { subjects: [] };
+                                saveAppDataToLocal();
+                                renderHome();
+                            }
 
-                        console.log(
-                            "[SYNC] Firebase trống -> upload local data lên Firebase."
+                            isAppDataLoadedFromCloud = true;
+                            return;
+                        }
+
+                        const cloudData = docSnap.data();
+
+                        if (
+                            !cloudData ||
+                            typeof cloudData !== "object" ||
+                            !Array.isArray(cloudData.subjects)
+                        ) {
+                            console.error(
+                                "[SYNC] Dữ liệu Cloud không hợp lệ:",
+                                cloudData
+                            );
+                            return;
+                        }
+
+                        const cloudJSON = JSON.stringify(cloudData);
+                        const localJSON = JSON.stringify(appData);
+
+                        lastCloudAppDataJSON = cloudJSON;
+
+                        // Đã giống local -> không render/ghi lại.
+                        if (cloudJSON === localJSON) {
+                            isAppDataLoadedFromCloud = true;
+                            return;
+                        }
+
+                        // Snapshot chính là kết quả của lần save vừa thực hiện.
+                        if (cloudJSON === lastSavedAppDataJSON) {
+                            isAppDataLoadedFromCloud = true;
+                            pendingAppDataSave = false;
+                            return;
+                        }
+
+                        // Local đang có thay đổi chưa upload.
+                        // Không để snapshot cũ ghi đè thay đổi.
+                        if (isAppDataSaving || pendingAppDataSave) {
+                            console.warn(
+                                "[SYNC] Bỏ qua Cloud snapshot vì local đang có thay đổi chưa upload."
+                            );
+                            return;
+                        }
+
+                        // Không có thay đổi local -> nhận bản Cloud mới.
+                        console.log("[SYNC] Nhận dữ liệu mới từ Cloud.");
+
+                        appData = cloneAppData(cloudData);
+                        saveAppDataToLocal();
+                        isAppDataLoadedFromCloud = true;
+
+                        renderHome();
+                    },
+                    (err) => {
+                        console.error(
+                            "[SYNC] Lỗi Firebase Realtime:",
+                            err
                         );
 
-                        await forceSaveAppDataToCloud();
+                        // Firebase lỗi thì GIỮ NGUYÊN appData/local backup.
+                    }
+                );
+
+            } catch (e) {
+                console.error(
+                    "[SYNC] Không thể khởi tạo realtime listener:",
+                    e
+                );
+
+                // Không reset appData khi listener lỗi.
+            }
+        }
+
+        // ------------------------------------------------------------
+        // Upload ngay lập tức lên Firebase
+        // ------------------------------------------------------------
+        async function forceSaveAppDataToCloud() {
+
+            if (
+                !currentUser ||
+                currentUser.role !== "admin"
+            ) {
+                console.warn("[SYNC] Không có quyền admin.");
+                return false;
+            }
+
+            // Luôn giữ backup local trước.
+            saveAppDataToLocal();
+
+            if (!window.firebaseDB) {
+                console.warn("[SYNC] Firebase chưa sẵn sàng.");
+                return false;
+            }
+
+            const dataToSave = cloneAppData(appData);
+            const jsonToSave = JSON.stringify(dataToSave);
+
+            lastSavedAppDataJSON = jsonToSave;
+            isAppDataSaving = true;
+            pendingAppDataSave = false;
+
+            try {
+                const docRef = window.firebaseDoc(
+                    window.firebaseDB,
+                    "users",
+                    "my_data"
+                );
+
+                await window.firebaseSetDoc(
+                    docRef,
+                    dataToSave
+                );
+
+                lastCloudAppDataJSON = jsonToSave;
+
+                console.log("[SYNC] Upload appData thành công.");
+                return true;
+
+            } catch (e) {
+                console.error(
+                    "[SYNC] Upload appData thất bại:",
+                    e
+                );
+
+                // Không xóa local, không reset appData.
+                return false;
+
+            } finally {
+                isAppDataSaving = false;
+            }
+        }
+
+        // ------------------------------------------------------------
+        // Hàm được gọi mỗi khi admin thay đổi dữ liệu đề.
+        // Có debounce 300ms để tránh hàng loạt thao tác tạo hàng loạt
+        // request Firebase.
+        // ------------------------------------------------------------
+        function saveAppDataToCloud() {
+
+            if (
+                !currentUser ||
+                currentUser.role !== "admin"
+            ) {
+                return;
+            }
+
+            // Local được lưu NGAY.
+            saveAppDataToLocal();
+
+            // Đánh dấu có thay đổi chưa upload.
+            pendingAppDataSave = true;
+
+            if (syncTimeout) {
+                clearTimeout(syncTimeout);
+                syncTimeout = null;
+            }
+
+            syncTimeout = setTimeout(async () => {
+                syncTimeout = null;
+                await forceSaveAppDataToCloud();
+            }, 300);
+        }
+
+        // ------------------------------------------------------------
+        // LOAD DỮ LIỆU CÁ NHÂN
+        // ------------------------------------------------------------
+        async function loadUserPersonalData() {
+
+            if (!currentUser || !currentUser.username) {
+                return;
+            }
+
+            const userKey = currentUser.username;
+            const localKey = "vmu_personal_" + userKey;
+
+            let localPersonalData = null;
+
+            // 1. Đọc local trước.
+            try {
+                const local = localStorage.getItem(localKey);
+
+                if (local) {
+                    const parsed = JSON.parse(local);
+
+                    if (
+                        parsed &&
+                        typeof parsed === "object"
+                    ) {
+                        localPersonalData = parsed;
+                        userPersonalData = parsed;
+                    }
+                }
+            } catch (e) {
+                console.error(
+                    "[PERSONAL] Lỗi đọc local:",
+                    e
+                );
+            }
+
+            // 2. Đọc Firebase.
+            try {
+
+                if (!window.firebaseDB) {
+
+                    if (!localPersonalData) {
+                        userPersonalData = {
+                            mistakes: [],
+                            habits: {}
+                        };
+                    }
+
+                    updateMistakeBadge();
+                    renderHabitTracker();
+                    return;
+                }
+
+                const docRef = window.firebaseDoc(
+                    window.firebaseDB,
+                    "users_data",
+                    userKey
+                );
+
+                const docSnap =
+                    await window.firebaseGetDoc(docRef);
+
+                if (docSnap.exists()) {
+
+                    const cloudData = docSnap.data();
+
+                    if (
+                        cloudData &&
+                        typeof cloudData === "object"
+                    ) {
+                        userPersonalData = {
+                            mistakes: Array.isArray(cloudData.mistakes)
+                                ? cloudData.mistakes
+                                : [],
+
+                            habits:
+                                cloudData.habits &&
+                                typeof cloudData.habits === "object"
+                                    ? cloudData.habits
+                                    : {}
+                        };
+
+                        localStorage.setItem(
+                            localKey,
+                            JSON.stringify(userPersonalData)
+                        );
+                    }
+
+                } else {
+
+                    // Firebase chưa có dữ liệu cá nhân.
+                    // Nếu local có dữ liệu -> upload local.
+                    if (
+                        localPersonalData &&
+                        (
+                            (
+                                Array.isArray(localPersonalData.mistakes) &&
+                                localPersonalData.mistakes.length > 0
+                            ) ||
+                            (
+                                localPersonalData.habits &&
+                                Object.keys(localPersonalData.habits).length > 0
+                            )
+                        )
+                    ) {
+                        userPersonalData = localPersonalData;
+                        await saveUserPersonalData(true);
 
                     } else {
 
-                        appData = {
-                            subjects: []
+                        userPersonalData = {
+                            mistakes: [],
+                            habits: {}
                         };
 
-                        saveAppDataToLocal();
-                        renderHome();
+                        localStorage.setItem(
+                            localKey,
+                            JSON.stringify(userPersonalData)
+                        );
                     }
-
-                    isAppDataLoadedFromCloud = true;
-
-                    return;
                 }
 
-
-                // ====================================================
-                // FIREBASE CÓ DATA
-                // ====================================================
-
-                const cloudData = docSnap.data();
-
-                // Kiểm tra dữ liệu Firebase có hợp lệ không
-                if (
-                    !cloudData ||
-                    typeof cloudData !== "object" ||
-                    !Array.isArray(cloudData.subjects)
-                ) {
-
-                    console.error(
-                        "[SYNC] Firebase data không hợp lệ:",
-                        cloudData
-                    );
-
-                    /*
-                     * KHÔNG ghi đè appData bằng dữ liệu lỗi.
-                     */
-                    return;
-                }
-
-
-                const cloudJSON = JSON.stringify(cloudData);
-                const localJSON = JSON.stringify(appData);
-
-
-                // ----------------------------------------------------
-                // Firebase giống local -> không làm gì
-                // ----------------------------------------------------
-
-                if (cloudJSON === localJSON) {
-
-                    lastCloudAppDataJSON = cloudJSON;
-                    isAppDataLoadedFromCloud = true;
-
-                    console.log(
-                        "[SYNC] Local và Cloud đã đồng bộ."
-                    );
-
-                    return;
-                }
-
-
-                // ====================================================
-                // SNAPSHOT NÀY CÓ THỂ LÀ KẾT QUẢ CỦA CHÍNH SAVE
-                // ====================================================
-
-                if (cloudJSON === lastSavedAppDataJSON) {
-
-                    console.log(
-                        "[SYNC] Firebase xác nhận bản save mới nhất."
-                    );
-
-                    lastCloudAppDataJSON = cloudJSON;
-                    isAppDataLoadedFromCloud = true;
-
-                    return;
-                }
-
-
-                // ====================================================
-                // CLOUD KHÁC LOCAL
-                // ====================================================
-
-                /*
-                 * Chỉ lấy Cloud làm nguồn mới nếu:
-                 *
-                 * - Chưa có thao tác save đang chờ
-                 * - Không đang upload
-                 *
-                 * Nếu đang save, KHÔNG được để snapshot cũ
-                 * ghi đè dữ liệu người dùng vừa sửa.
-                 */
-
-                if (isAppDataSaving || pendingAppDataSave) {
-
-                    console.warn(
-                        "[SYNC] Bỏ qua snapshot vì local đang có thay đổi chưa upload."
-                    );
-
-                    return;
-                }
-
-
-                // ====================================================
-                // NHẬN DATA TỪ CLOUD
-                // ====================================================
-
-                console.log(
-                    "[SYNC] Nhận dữ liệu mới từ Firebase."
-                );
-
-                appData = cloneAppData(cloudData);
-
-                lastCloudAppDataJSON = cloudJSON;
-
-                saveAppDataToLocal();
-
-                isAppDataLoadedFromCloud = true;
-
-                renderHome();
-            },
-
-            (err) => {
+            } catch (e) {
 
                 console.error(
-                    "[SYNC] Firebase realtime error:",
-                    err
+                    "[PERSONAL] Lỗi tải Firebase:",
+                    e
                 );
 
-                /*
-                 * Firebase lỗi KHÔNG được reset appData.
-                 *
-                 * Dữ liệu hiện tại vẫn giữ nguyên.
-                 */
-            }
-        );
-
-    } catch (e) {
-
-        console.error(
-            "[SYNC] Không thể khởi tạo Firebase listener:",
-            e
-        );
-
-        /*
-         * KHÔNG reset:
-         *
-         * appData = { subjects: [] };
-         *
-         * vì sẽ gây mất dữ liệu.
-         */
-    }
-}
-
-
-// ============================================================
-// FORCE SAVE
-// ============================================================
-
-async function forceSaveAppDataToCloud() {
-
-    if (
-        !currentUser ||
-        currentUser.role !== "admin"
-    ) {
-        console.warn(
-            "[SYNC] Không có quyền admin để lưu appData."
-        );
-
-        return false;
-    }
-
-    if (!window.firebaseDB) {
-
-        console.warn(
-            "[SYNC] Firebase chưa sẵn sàng."
-        );
-
-        saveAppDataToLocal();
-
-        return false;
-    }
-
-
-    // --------------------------------------------------------
-    // Lưu local trước
-    // --------------------------------------------------------
-
-    saveAppDataToLocal();
-
-
-    const dataToSave = cloneAppData(appData);
-    const jsonToSave = JSON.stringify(dataToSave);
-
-    lastSavedAppDataJSON = jsonToSave;
-
-    isAppDataSaving = true;
-    pendingAppDataSave = false;
-
-
-    try {
-
-        const docRef = window.firebaseDoc(
-            window.firebaseDB,
-            "users",
-            "my_data"
-        );
-
-
-        /*
-         * Dùng setDoc với merge:false có chủ đích:
-         *
-         * Document my_data chính là "database đề".
-         *
-         * Nhưng quan trọng là snapshot cũ không còn được phép
-         * ghi ngược vào local trong lúc save.
-         */
-
-        await window.firebaseSetDoc(
-            docRef,
-            dataToSave
-        );
-
-
-        lastCloudAppDataJSON = jsonToSave;
-
-        console.log(
-            "[SYNC] Upload Firebase thành công."
-        );
-
-        return true;
-
-    } catch (e) {
-
-        console.error(
-            "[SYNC] Upload Firebase thất bại:",
-            e
-        );
-
-        /*
-         * Không xóa local.
-         * Không reset appData.
-         */
-
-        return false;
-
-    } finally {
-
-        isAppDataSaving = false;
-    }
-}
-
-
-// ============================================================
-// SAVE APP DATA
-// ============================================================
-
-function saveAppDataToCloud() {
-
-    if (
-        !currentUser ||
-        currentUser.role !== "admin"
-    ) {
-        return;
-    }
-
-
-    // --------------------------------------------------------
-    // 1. LƯU LOCAL NGAY
-    // --------------------------------------------------------
-
-    saveAppDataToLocal();
-
-
-    // --------------------------------------------------------
-    // 2. ĐÁNH DẤU CÓ THAY ĐỔI CHỜ UPLOAD
-    // --------------------------------------------------------
-
-    pendingAppDataSave = true;
-
-
-    // --------------------------------------------------------
-    // 3. HỦY TIMER CŨ
-    // --------------------------------------------------------
-
-    if (syncTimeout) {
-        clearTimeout(syncTimeout);
-        syncTimeout = null;
-    }
-
-
-    // --------------------------------------------------------
-    // 4. DEBOUNCE 300ms
-    // --------------------------------------------------------
-
-    syncTimeout = setTimeout(async () => {
-
-        syncTimeout = null;
-
-        await forceSaveAppDataToCloud();
-
-    }, 300);
-}
-
-
-// ============================================================
-// USER PERSONAL DATA
-// ============================================================
-
-async function loadUserPersonalData() {
-
-    if (!currentUser || !currentUser.username) {
-        return;
-    }
-
-    const userKey = currentUser.username;
-
-    const localKey =
-        "vmu_personal_" + userKey;
-
-
-    // --------------------------------------------------------
-    // 1. ĐỌC LOCAL TRƯỚC
-    // --------------------------------------------------------
-
-    let localPersonalData = null;
-
-    try {
-
-        const local = localStorage.getItem(localKey);
-
-        if (local) {
-
-            const parsed = JSON.parse(local);
-
-            if (parsed && typeof parsed === "object") {
-                localPersonalData = parsed;
-                userPersonalData = parsed;
-            }
-        }
-
-    } catch (e) {
-
-        console.error(
-            "[PERSONAL] Lỗi đọc local:",
-            e
-        );
-    }
-
-
-    // --------------------------------------------------------
-    // 2. ĐỌC FIREBASE
-    // --------------------------------------------------------
-
-    try {
-
-        if (!window.firebaseDB) {
-
-            if (!localPersonalData) {
-                userPersonalData = {
-                    mistakes: [],
-                    habits: {}
-                };
+                // Firebase lỗi -> giữ local.
+                if (localPersonalData) {
+                    userPersonalData = localPersonalData;
+                } else {
+                    userPersonalData = {
+                        mistakes: [],
+                        habits: {}
+                    };
+                }
             }
 
             updateMistakeBadge();
             renderHabitTracker();
-
-            return;
         }
 
+        // ------------------------------------------------------------
+        // SAVE DỮ LIỆU CÁ NHÂN
+        // ------------------------------------------------------------
+        async function saveUserPersonalData(silent = false) {
 
-        const docRef = window.firebaseDoc(
-            window.firebaseDB,
-            "users_data",
-            userKey
-        );
+            if (!currentUser || !currentUser.username) {
+                return false;
+            }
 
+            const userKey = currentUser.username;
+            const localKey = "vmu_personal_" + userKey;
 
-        const docSnap =
-            await window.firebaseGetDoc(docRef);
-
-
-        // ----------------------------------------------------
-        // Firebase có dữ liệu
-        // ----------------------------------------------------
-
-        if (docSnap.exists()) {
-
-            const cloudData = docSnap.data();
-
-
-            if (
-                cloudData &&
-                typeof cloudData === "object"
-            ) {
-
-                userPersonalData = {
-                    mistakes: Array.isArray(cloudData.mistakes)
-                        ? cloudData.mistakes
-                        : [],
-
-                    habits:
-                        cloudData.habits &&
-                        typeof cloudData.habits === "object"
-                            ? cloudData.habits
-                            : {}
-                };
-
-
+            // Local trước.
+            try {
                 localStorage.setItem(
                     localKey,
                     JSON.stringify(userPersonalData)
                 );
-            }
-
-        }
-
-        // ----------------------------------------------------
-        // Firebase chưa có dữ liệu
-        // ----------------------------------------------------
-
-        else {
-
-            /*
-             * Nếu local đã có dữ liệu -> KHÔNG tạo object rỗng.
-             * Upload local lên Firebase.
-             */
-
-            if (
-                localPersonalData &&
-                (
-                    (Array.isArray(localPersonalData.mistakes) &&
-                        localPersonalData.mistakes.length > 0) ||
-                    (
-                        localPersonalData.habits &&
-                        Object.keys(localPersonalData.habits).length > 0
-                    )
-                )
-            ) {
-
-                userPersonalData = localPersonalData;
-
-                await saveUserPersonalData(true);
-
-            }
-
-            else {
-
-                userPersonalData = {
-                    mistakes: [],
-                    habits: {}
-                };
-
-                localStorage.setItem(
-                    localKey,
-                    JSON.stringify(userPersonalData)
+            } catch (e) {
+                console.error(
+                    "[PERSONAL] Không thể lưu local:",
+                    e
                 );
             }
-        }
 
-    } catch (e) {
-
-        console.error(
-            "[PERSONAL] Lỗi tải Firebase:",
-            e
-        );
-
-
-        /*
-         * Firebase lỗi -> giữ local.
-         */
-
-        if (localPersonalData) {
-
-            userPersonalData = localPersonalData;
-
-        } else {
-
-            userPersonalData = {
-                mistakes: [],
-                habits: {}
-            };
-        }
-    }
-
-
-    updateMistakeBadge();
-    renderHabitTracker();
-}
-
-
-// ============================================================
-// SAVE PERSONAL DATA
-// ============================================================
-
-async function saveUserPersonalData(silent = false) {
-
-    if (!currentUser || !currentUser.username) {
-        return false;
-    }
-
-
-    const userKey =
-        currentUser.username;
-
-
-    const localKey =
-        "vmu_personal_" + userKey;
-
-
-    // --------------------------------------------------------
-    // LOCAL FIRST
-    // --------------------------------------------------------
-
-    try {
-
-        localStorage.setItem(
-            localKey,
-            JSON.stringify(userPersonalData)
-        );
-
-    } catch (e) {
-
-        console.error(
-            "[PERSONAL] Không thể lưu local:",
-            e
-        );
-    }
-
-
-    // --------------------------------------------------------
-    // FIREBASE
-    // --------------------------------------------------------
-
-    if (!window.firebaseDB) {
-
-        updateMistakeBadge();
-
-        return false;
-    }
-
-
-    try {
-
-        const docRef = window.firebaseDoc(
-            window.firebaseDB,
-            "users_data",
-            userKey
-        );
-
-
-        await window.firebaseSetDoc(
-            docRef,
-            {
-                mistakes: Array.isArray(userPersonalData.mistakes)
-                    ? userPersonalData.mistakes
-                    : [],
-
-                habits:
-                    userPersonalData.habits &&
-                    typeof userPersonalData.habits === "object"
-                        ? userPersonalData.habits
-                        : {}
+            if (!window.firebaseDB) {
+                updateMistakeBadge();
+                return false;
             }
-        );
 
+            try {
 
-        if (!silent) {
-            console.log(
-                "[PERSONAL] Đã đồng bộ Firebase."
-            );
+                const docRef = window.firebaseDoc(
+                    window.firebaseDB,
+                    "users_data",
+                    userKey
+                );
+
+                await window.firebaseSetDoc(
+                    docRef,
+                    {
+                        mistakes: Array.isArray(userPersonalData.mistakes)
+                            ? userPersonalData.mistakes
+                            : [],
+
+                        habits:
+                            userPersonalData.habits &&
+                            typeof userPersonalData.habits === "object"
+                                ? userPersonalData.habits
+                                : {}
+                    }
+                );
+
+                if (!silent) {
+                    console.log(
+                        "[PERSONAL] Đã đồng bộ Firebase."
+                    );
+                }
+
+                updateMistakeBadge();
+                return true;
+
+            } catch (e) {
+
+                console.error(
+                    "[PERSONAL] Lỗi lưu Firebase:",
+                    e
+                );
+
+                // Local vẫn giữ dữ liệu.
+                updateMistakeBadge();
+                return false;
+            }
         }
 
+        function switchTab(tabId) {
+            document.getElementById('tab-home').classList.add('hidden');
+            document.getElementById('tab-exam').classList.add('hidden');
+            document.getElementById('tab-mistakes').classList.add('hidden');
+            document.getElementById('tab-habit').classList.add('hidden');
 
-        updateMistakeBadge();
+            document.getElementById('nav-home').classList.remove('bg-[#FF4081]');
+            document.getElementById('nav-mistakes').classList.remove('bg-[#FF4081]');
+            document.getElementById('nav-habit').classList.remove('bg-[#FF4081]');
 
-        return true;
+            if (tabId === 'home') {
+                document.getElementById('tab-home').classList.remove('hidden');
+                document.getElementById('nav-home').classList.add('bg-[#FF4081]');
+                renderHome();
+            } else if (tabId === 'exam') {
+                document.getElementById('tab-exam').classList.remove('hidden');
+            } else if (tabId === 'mistakes') {
+                document.getElementById('tab-mistakes').classList.remove('hidden');
+                document.getElementById('nav-mistakes').classList.add('bg-[#FF4081]');
+                renderMistakes();
+            } else if (tabId === 'habit') {
+                document.getElementById('tab-habit').classList.remove('hidden');
+                document.getElementById('nav-habit').classList.add('bg-[#FF4081]');
+                renderHabitTracker();
+            }
+        }
 
-    } catch (e) {
+        function extractNumber(name) {
+            let match = name.match(/\d+/);
+            return match ? parseInt(match[0]) : 9999;
+        }
 
-        console.error(
-            "[PERSONAL] Lỗi lưu Firebase:",
-            e
-        );
+        function renderHome() {
+            const container = document.getElementById('subjects-container');
+            if (!appData.subjects || appData.subjects.length === 0) {
+                container.innerHTML = `<div class="bg-white p-8 rounded-2xl text-center text-slate-400">Chưa có môn học nào. Hãy bấm "Thêm Môn Học" hoặc "Tạo Đề / Tải Folder Word" để bắt đầu.</div>`;
+                return;
+            }
 
+            let isAdmin = currentUser && currentUser.role === 'admin';
+            let html = '';
+            appData.subjects.forEach((subj, sIdx) => {
+                if (subj.chapters && subj.chapters.length > 0) {
+                    subj.chapters.sort((a, b) => extractNumber(a.chapterName) - extractNumber(b.chapterName));
+                }
 
-        /*
-         * Firebase lỗi nhưng local vẫn còn.
-         */
+                let isSubjCollapsed = collapsedSubjects[sIdx] !== undefined ? collapsedSubjects[sIdx] : true;
+                html += `
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                        <div class="bg-[#FFF5F8] px-5 py-3 flex justify-between items-center border-b border-[#FFB6C1]/30">
+                            <div class="flex items-center space-x-3 cursor-pointer select-none" onclick="toggleSubjectCollapse(${sIdx})">
+                                <i class="fa-solid fa-chevron-${isSubjCollapsed ? 'right' : 'down'} text-slate-400 text-xs"></i>
+                                <h3 class="font-bold text-slate-900 text-base md:text-lg flex items-center"><i class="fa-solid fa-book-medical text-[#D6336C] mr-2"></i> ${subj.name}</h3>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                ${isAdmin ? `<button onclick="deleteSubject(${sIdx})" class="text-slate-400 hover:text-[#D6336C] p-1 text-sm transition" title="Xóa môn"><i class="fa-solid fa-trash"></i></button>` : ''}
+                            </div>
+                        </div>
+                        <div class="p-4 space-y-2 ${isSubjCollapsed ? 'hidden' : ''}">
+                `;
 
-        updateMistakeBadge();
+                if (!subj.chapters || subj.chapters.length === 0) {
+                    html += `<p class="text-xs text-slate-400 italic">Chưa có chương học nào.</p>`;
+                } else {
+                    subj.chapters.forEach((chap, cIdx) => {
+                        if (chap.exams && chap.exams.length > 0) {
+                            chap.exams.sort((a, b) => extractNumber(a.title) - extractNumber(b.title));
+                        }
 
-        return false;
-    }
-}
+                        let chapKey = `${sIdx}_${cIdx}`;
+                        let isChapCollapsed = collapsedChapters[chapKey] !== undefined ? collapsedChapters[chapKey] : true;
+                        html += `
+                            <div class="bg-[#FFF5F8]/60 px-3 py-1.5 rounded-lg border border-[#FFB6C1]/30">
+                                <div class="flex justify-between items-center">
+                                    <div class="flex items-center space-x-2 cursor-pointer select-none" onclick="toggleChapterCollapse(${sIdx}, ${cIdx})">
+                                        <i class="fa-solid fa-chevron-${isChapCollapsed ? 'right' : 'down'} text-slate-400 text-[10px]"></i>
+                                        <h4 class="font-semibold text-slate-700 text-xs md:text-sm flex items-center"><i class="fa-solid fa-bookmark text-[#FF4081] mr-1.5 text-[11px]"></i> ${chap.chapterName}</h4>
+                                    </div>
+                                    <div class="flex items-center space-x-1">
+                                        ${isAdmin ? `
+                                            <button onclick="openRenameModal('chapter', ${sIdx}, ${cIdx}, null)" class="text-slate-400 hover:text-blue-600 p-0.5 text-xs" title="Sửa tên chương"><i class="fa-solid fa-pen"></i></button>
+                                            <button onclick="deleteChapter(${sIdx}, ${cIdx})" class="text-slate-400 hover:text-[#D6336C] p-0.5 text-xs" title="Xóa chương"><i class="fa-solid fa-trash"></i></button>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 pt-2 pb-1 ${isChapCollapsed ? 'hidden' : ''}">
+                        `;
+
+                        if (!chap.exams || chap.exams.length === 0) {
+                            html += `<span class="text-xs text-slate-400 italic">Chưa có bài học.</span>`;
+                        } else {
+                            chap.exams.forEach((ex, eIdx) => {
+                                html += `
+                                    <div class="bg-white p-2.5 rounded-xl border border-slate-200 hover:border-[#FFB6C1] transition shadow-xs flex flex-col justify-between space-y-1.5 min-h-[90px]">
+                                        <div>
+                                            <h5 class="font-bold text-slate-800 text-xs line-clamp-2" title="${ex.title}">${ex.title}</h5>
+                                            <span class="text-[10px] text-slate-400 mt-0.5 block"><i class="fa-solid fa-circle-question mr-1"></i> ${ex.questions.length} câu</span>
+                                        </div>
+                                        <div class="flex justify-between items-center pt-1 border-t border-slate-100">
+                                            <button onclick="startExam('${sIdx}', '${cIdx}', '${eIdx}')" class="bg-[#FFF5F8] hover:bg-[#D6336C] hover:text-white text-[#D6336C] px-2 py-0.5 rounded-lg text-[10px] font-semibold transition">Vào thi</button>
+                                            ${isAdmin ? `
+                                            <div class="flex items-center space-x-1">
+                                                <button onclick="openRenameModal('exam', ${sIdx}, ${cIdx}, ${eIdx})" class="text-slate-400 hover:text-blue-600 p-0.5 text-[10px]" title="Sửa tên bài"><i class="fa-solid fa-pen"></i></button>
+                                                <button onclick="deleteExam('${sIdx}', ${cIdx}, ${eIdx})" class="text-slate-400 hover:text-[#D6336C] text-[10px] p-0.5" title="Xóa bài"><i class="fa-solid fa-trash"></i></button>
+                                            </div>` : ''}
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                        }
+                        html += `</div></div>`;
+                    });
+                }
+                html += `</div></div>`;
+            });
+            container.innerHTML = html;
+        }
+
+        function openRenameModal(type, sIdx, cIdx, eIdx) {
+            renameTarget = { type, sIdx, cIdx, eIdx };
+            let titleEl = document.getElementById('rename-modal-title');
+            let inputEl = document.getElementById('input-rename-val');
+
+            if (type === 'chapter') {
+                titleEl.innerText = "Sửa tên Chương";
+                inputEl.value = appData.subjects[sIdx].chapters[cIdx].chapterName;
+            } else {
+                titleEl.innerText = "Sửa tên Bài học";
+                inputEl.value = appData.subjects[sIdx].chapters[cIdx].exams[eIdx].title;
+            }
+            document.getElementById('modal-rename').classList.remove('hidden');
+            inputEl.focus();
+        }
+
+        function closeRenameModal() {
+            document.getElementById('modal-rename').classList.add('hidden');
+            renameTarget = null;
+        }
+
+        function confirmRename() {
+            let newVal = document.getElementById('input-rename-val').value.trim();
+            if (!newVal) return alert('Tên không được để trống!');
+
+            let { type, sIdx, cIdx, eIdx } = renameTarget;
+            if (type === 'chapter') {
+                appData.subjects[sIdx].chapters[cIdx].chapterName = newVal;
+            } else {
+                appData.subjects[sIdx].chapters[cIdx].exams[eIdx].title = newVal;
+            }
+
+            saveAppDataToCloud();
+            closeRenameModal();
+            renderHome();
+        }
+
+        function deleteChapter(sIdx, cIdx) {
+            if (confirm('Xóa chương này cùng toàn bộ đề thi bên trong?')) {
+                appData.subjects[sIdx].chapters.splice(cIdx, 1);
+                saveAppDataToCloud();
+                renderHome();
+            }
+        }
+
+        function toggleSubjectCollapse(sIdx) {
+            let current = collapsedSubjects[sIdx] !== undefined ? collapsedSubjects[sIdx] : true;
+            collapsedSubjects[sIdx] = !current;
+            renderHome();
+        }
+
+        function toggleChapterCollapse(sIdx, cIdx) {
+            let key = `${sIdx}_${cIdx}`;
+            let current = collapsedChapters[key] !== undefined ? collapsedChapters[key] : true;
+            collapsedChapters[key] = !current;
+            renderHome();
+        }
+
+        function openSubjectModal() {
+            document.getElementById('input-new-subject').value = '';
+            document.getElementById('modal-subject').classList.remove('hidden');
+        }
+        function closeSubjectModal() { document.getElementById('modal-subject').classList.add('hidden'); }
+        function saveNewSubject() {
+            const name = document.getElementById('input-new-subject').value.trim();
+            if (!name) return alert('Vui lòng nhập tên môn học!');
+            appData.subjects.push({ name: name, chapters: [] });
+            saveAppDataToCloud();
+            closeSubjectModal();
+            renderHome();
+        }
+        function deleteSubject(sIdx) {
+            if (confirm('Xóa môn học này?')) {
+                appData.subjects.splice(sIdx, 1);
+                saveAppDataToCloud();
+                renderHome();
+            }
+        }
+
+        function openCreateExamModal() {
+            const selectSubj = document.getElementById('modal-select-subject');
+            selectSubj.innerHTML = '';
+            appData.subjects.forEach((s, idx) => { selectSubj.innerHTML += `<option value="${idx}">${s.name}</option>`; });
+            
+            document.getElementById('modal-input-folder').value = '';
+            document.getElementById('modal-input-docs').value = '';
+            document.getElementById('modal-input-new-chapter') ? document.getElementById('modal-input-new-chapter').value = '' : null;
+            
+            updateChapterDropdown();
+            document.getElementById('modal-exam').classList.remove('hidden');
+        }
+        function closeCreateExamModal() { document.getElementById('modal-exam').classList.add('hidden'); }
+
+        function updateChapterDropdown() {
+            const sIdx = document.getElementById('modal-select-subject').value;
+            const selectChap = document.getElementById('modal-select-chapter');
+            selectChap.innerHTML = '';
+            
+            if (sIdx === "" || !appData.subjects[sIdx]) return;
+            let subj = appData.subjects[sIdx];
+
+            if (subj.chapters && subj.chapters.length > 0) {
+                subj.chapters.forEach((chap, idx) => {
+                    selectChap.innerHTML += `<option value="${idx}">${chap.chapterName}</option>`;
+                });
+            }
+            selectChap.innerHTML += `<option value="NEW">➕ Thêm chương mới...</option>`;
+            handleChapterSelectChange();
+        }
+
+        function handleChapterSelectChange() {
+            const val = document.getElementById('modal-select-chapter').value;
+            const newChapContainer = document.getElementById('new-chapter-input-container');
+            if (val === "NEW") {
+                newChapContainer.classList.remove('hidden');
+            } else {
+                newChapContainer.classList.add('hidden');
+            }
+        }
+
+        async function saveNewExam() {
+            const sIdx = document.getElementById('modal-select-subject').value;
+            const folderInput = document.getElementById('modal-input-folder');
+            const fileInput = document.getElementById('modal-input-docs');
+
+            if (sIdx === "" || sIdx === null) return alert('Vui lòng chọn môn học!');
+            let subj = appData.subjects[sIdx];
+            if (!subj) return alert('Vui lòng chọn môn học hợp lệ!');
+
+            let processedCount = 0;
+            let filesToProcess = [];
+
+            if (folderInput.files && folderInput.files.length > 0) {
+                for (let f of folderInput.files) filesToProcess.push({ file: f, isFolder: true });
+            }
+            if (fileInput.files && fileInput.files.length > 0) {
+                for (let f of fileInput.files) filesToProcess.push({ file: f, isFolder: false });
+            }
+
+            if (filesToProcess.length === 0) {
+                return alert('Vui lòng chọn ít nhất 1 file .docx hoặc folder!');
+            }
+
+            for (let item of filesToProcess) {
+                let file = item.file;
+                let fileName = file.name;
+
+                if (!fileName.toLowerCase().endsWith('.docx') || fileName.startsWith('~$')) continue;
+
+                try {
+                    let arrayBuffer = await file.arrayBuffer();
+                    let result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+                    let questions = parseBulkQuestions(result.value);
+
+                    if (questions && questions.length > 0) {
+                        let targetChapter = null;
+                        let examTitle = fileName.replace(/\.[^/.]+$/, "");
+
+                        if (item.isFolder) {
+                            let pathParts = file.webkitRelativePath ? file.webkitRelativePath.split('/') : [fileName];
+                            let chapterName = "Chương 1";
+                            if (pathParts.length > 1) {
+                                chapterName = pathParts[pathParts.length - 2].replace(/[_]/g, ' ').trim();
+                            }
+                            targetChapter = subj.chapters.find(c => c.chapterName.toLowerCase() === chapterName.toLowerCase());
+                            if (!targetChapter) {
+                                targetChapter = { chapterName: chapterName, exams: [] };
+                                subj.chapters.push(targetChapter);
+                            }
+                        } else {
+                            let chapSelectVal = document.getElementById('modal-select-chapter').value;
+                            if (chapSelectVal === "NEW") {
+                                let newChapName = document.getElementById('modal-input-new-chapter').value.trim() || "Chương mới";
+                                targetChapter = subj.chapters.find(c => c.chapterName.toLowerCase() === newChapName.toLowerCase());
+                                if (!targetChapter) {
+                                    targetChapter = { chapterName: newChapName, exams: [] };
+                                    subj.chapters.push(targetChapter);
+                                }
+                            } else {
+                                let idx = parseInt(chapSelectVal);
+                                if (!isNaN(idx) && subj.chapters[idx]) {
+                                    targetChapter = subj.chapters[idx];
+                                } else {
+                                    targetChapter = { chapterName: "Chương 1", exams: [] };
+                                    subj.chapters.push(targetChapter);
+                                }
+                            }
+                        }
+
+                        let existingExam = targetChapter.exams.find(e => e.title === examTitle);
+                        if (existingExam) {
+                            existingExam.questions = questions;
+                        } else {
+                            targetChapter.exams.push({
+                                id: 'ex_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+                                title: examTitle,
+                                questions: questions
+                            });
+                        }
+                        processedCount++;
+                    }
+                } catch (err) {
+                    console.error("Lỗi đọc file:", fileName, err);
+                }
+            }
+
+            if (processedCount === 0) {
+                return alert('Không bóc tách được câu hỏi nào! Vui lòng đảm bảo bạn chọn đúng file .docx.');
+            }
+
+            saveAppDataToCloud();
+            closeCreateExamModal();
+            renderHome();
+            alert(`Thành công! Đã nhập ${processedCount} bài học mới.`);
+        }
+
+        // BỘ BÓC TÁCH CÂU HỎI THÔNG MINH - DIỆT SẠCH MỌI TIỀN TỐ DƯ THỪA (Q:, A:, E:, CÂU..., ANS...)
+        function parseBulkQuestions(text) {
+            if (!text) return [];
+
+            let rawText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            let blocks = rawText.split(/(?=(?:^|\n)\s*(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:]\s+[A-Z\u00C0-\u1EF9]))/i);
+            let questions = [];
+
+            blocks.forEach(block => {
+                block = block.trim();
+                if (!block) return;
+
+                // 1. Tách và làm sạch giải thích (E:, Exp:, Explanation:, Giải thích:)
+                let explanation = "";
+                let expMatch = block.match(/(?:Giải\s*thích|Explanation|Exp|E)[\.\:\s]+([\s\S]*)$/i);
+                if (expMatch) {
+                    explanation = expMatch[1].replace(/^(?:Giải\s*thích|Explanation|Exp|E)[\.\:\s]*/i, '').trim();
+                    block = block.substring(0, expMatch.index).trim();
+                }
+
+                // 2. Tách đáp án đúng dạng "Đáp án: A", "Key: A", "Ans: A"
+                let explicitKeyIdx = -1;
+                let keyMatch = block.match(/(?:Đáp\s*án|Answer|Key|Ans|ĐA)[\.\:\s]*([A-D])/i);
+                if (keyMatch) {
+                    explicitKeyIdx = keyMatch[1].toUpperCase().charCodeAt(0) - 65;
+                    block = block.substring(0, keyMatch.index).trim();
+                }
+
+                // 3. Định vị vị trí A, B, C, D (hoặc A:, B:, C:, D:)
+                let aMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?A[\.\)\:\-\]\s]+)/i);
+                let bMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?B[\.\)\:\-\]\s]+)/i);
+                let cMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?C[\.\)\:\-\]\s]+)/i);
+                let dMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?D[\.\)\:\-\]\s]+)/i);
+
+                if (aMatch && bMatch && cMatch && dMatch) {
+                    let posA = aMatch.index + aMatch[0].indexOf(aMatch[1]);
+                    let posB = bMatch.index + bMatch[0].indexOf(bMatch[1]);
+                    let posC = cMatch.index + cMatch[0].indexOf(cMatch[1]);
+                    let posD = dMatch.index + dMatch[0].indexOf(dMatch[1]);
+
+                    if (posA < posB && posB < posC && posC < posD) {
+                        let qText = block.substring(0, posA)
+                            .replace(/^(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:])\s*/i, '')
+                            .replace(/^(?:Q|Câu|Question)\b[\s\:\.]*/i, '')
+                            .trim();
+
+                        let rawA = block.substring(posA, posB);
+                        let rawB = block.substring(posB, posC);
+                        let rawC = block.substring(posC, posD);
+                        let rawD = block.substring(posD);
+
+                        let rawOpts = [rawA, rawB, rawC, rawD];
+                        let detectedCorrectIdx = -1;
+                        let cleanOptions = [];
+
+                        rawOpts.forEach((optStr, idx) => {
+                            if (optStr.includes('*')) {
+                                detectedCorrectIdx = idx;
+                            }
+
+                            let cleaned = optStr
+                                .replace(/\*/g, '')
+                                .replace(/^[\s\u00A0\t\r\n]+/g, '')
+                                .replace(/^(?:[\(\[]?[A-Da-d][\.\)\:\-\]\s]+\s*)+/gi, '')
+                                .replace(/^[\s\u00A0\t\r\n]+/g, '')
+                                .trim();
+
+                            let prefix = String.fromCharCode(65 + idx) + ". ";
+                            cleanOptions.push(prefix + cleaned);
+                        });
+
+                        if (detectedCorrectIdx === -1 && explicitKeyIdx !== -1) {
+                            detectedCorrectIdx = explicitKeyIdx;
+                        }
+                        if (detectedCorrectIdx < 0 || detectedCorrectIdx > 3) {
+                            detectedCorrectIdx = 0;
+                        }
+
+                        if (qText && cleanOptions[0] && cleanOptions[1]) {
+                            questions.push({
+                                id: questions.length + 1,
+                                questionText: qText,
+                                options: cleanOptions,
+                                correctAnswer: detectedCorrectIdx,
+                                explanation: explanation
+                            });
+                        }
+                    }
+                }
+            });
+
+            return questions;
+        }
+
+        function deleteExam(sIdx, cIdx, eIdx) {
+            if (confirm('Xóa bài học này?')) {
+                appData.subjects[sIdx].chapters[cIdx].exams.splice(eIdx, 1);
+                saveAppDataToCloud();
+                renderHome();
+            }
+        }
+
+        function startExam(sIdx, cIdx, eIdx) {
+            currentExamRef = { sIdx, cIdx, eIdx };
+            currentExam = JSON.parse(JSON.stringify(appData.subjects[sIdx].chapters[cIdx].exams[eIdx]));
+            document.getElementById('exam-title-header').innerText = currentExam.title;
+            document.getElementById('exam-badge-subject').innerText = appData.subjects[sIdx].name;
+
+            activeQuestions = JSON.parse(JSON.stringify(currentExam.questions));
+            if (settings.shuffleQ) activeQuestions.sort(() => Math.random() - 0.5);
+            if (settings.shuffleA) {
+                activeQuestions.forEach(q => {
+                    let pairs = q.options.map((opt, idx) => ({ opt, isCorrect: idx === q.correctAnswer }));
+                    pairs.sort(() => Math.random() - 0.5);
+                    q.options = pairs.map(p => p.opt);
+                    q.correctAnswer = pairs.findIndex(p => p.isCorrect);
+                });
+            }
+
+            currentQuestionIndex = 0;
+            userAnswers = {};
+            unsureQuestions = {};
+            switchTab('exam');
+            renderQuestion();
+            renderPalette();
+            updateStats();
+        }
+
+        function renderQuestion() {
+            const container = document.getElementById('question-container');
+            const q = activeQuestions[currentQuestionIndex];
+            const selectedAns = userAnswers[currentQuestionIndex];
+            const isAnswered = selectedAns !== undefined;
+            let isAdmin = currentUser && currentUser.role === 'admin';
+
+            let html = `
+                <div class="flex justify-between items-start">
+                    <span class="bg-[#FFF5F8] text-[#D6336C] font-semibold px-3 py-1 rounded-lg text-sm border border-[#FFB6C1]">Câu ${currentQuestionIndex + 1} / ${activeQuestions.length}</span>
+                    <div class="flex items-center space-x-2">
+                        ${isAdmin ? `<button onclick="openEditQuestionModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-2.5 py-1 rounded-lg font-medium transition flex items-center"><i class="fa-solid fa-pen-to-square mr-1.5 text-[#D6336C]"></i> Sửa câu hỏi</button>` : ''}
+                        ${unsureQuestions[currentQuestionIndex] ? '<span class="bg-[#FF4081] text-white text-xs px-2.5 py-1 rounded-full font-bold">Phân vân</span>' : ''}
+                    </div>
+                </div>
+                <h4 class="text-slate-900 font-bold text-lg leading-relaxed">${q.questionText}</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+            `;
+
+            q.options.forEach((opt, idx) => {
+                let btnStyle = "border-slate-200 hover:border-[#FFB6C1] hover:bg-[#FFF5F8] text-slate-700";
+                let iconHtml = '';
+                if (isAnswered) {
+                    if (settings.showAnswer) {
+                        if (idx === q.correctAnswer) { btnStyle = "bg-emerald-50 border-emerald-500 text-emerald-900 font-medium"; iconHtml = '<i class="fa-solid fa-circle-check text-emerald-600 ml-auto"></i>'; }
+                        else if (idx === selectedAns) { btnStyle = "bg-rose-50 border-rose-500 text-rose-900 font-medium"; iconHtml = '<i class="fa-solid fa-circle-xmark text-rose-600 ml-auto"></i>'; }
+                    } else if (idx === selectedAns) { btnStyle = "bg-[#FFF5F8] border-[#D6336C] text-[#D6336C] font-medium"; }
+                }
+                html += `<button onclick="selectAnswer(${idx})" class="w-full text-left p-3.5 rounded-xl border-2 transition flex items-center justify-between text-sm md:text-base ${btnStyle}"><span>${opt}</span>${iconHtml}</button>`;
+            });
+            html += `</div>`;
+
+            if (isAnswered && settings.showAnswer && q.explanation && q.explanation.trim() !== "") {
+                html += `
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 text-sm space-y-1">
+                        <span class="font-bold text-slate-900 block"><i class="fa-solid fa-circle-info text-blue-600 mr-1"></i> Giải thích chi tiết:</span>
+                        <p class="text-slate-600">${q.explanation}</p>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+        }
+
+        function openEditQuestionModal() {
+            if (!currentUser || currentUser.role !== 'admin') return;
+            const q = activeQuestions[currentQuestionIndex];
+            document.getElementById('edit-q-text').value = q.questionText;
+            document.getElementById('edit-opt-0').value = q.options[0] || '';
+            document.getElementById('edit-opt-1').value = q.options[1] || '';
+            document.getElementById('edit-opt-2').value = q.options[2] || '';
+            document.getElementById('edit-opt-3').value = q.options[3] || '';
+            document.getElementById('edit-correct-ans').value = q.correctAnswer || 0;
+            document.getElementById('edit-explanation').value = q.explanation || '';
+            document.getElementById('modal-edit-question').classList.remove('hidden');
+        }
+
+        function closeEditQuestionModal() { document.getElementById('modal-edit-question').classList.add('hidden'); }
+
+        function saveEditedQuestion() {
+            let q = activeQuestions[currentQuestionIndex];
+            q.questionText = document.getElementById('edit-q-text').value.trim();
+            q.options = [
+                document.getElementById('edit-opt-0').value.trim(),
+                document.getElementById('edit-opt-1').value.trim(),
+                document.getElementById('edit-opt-2').value.trim(),
+                document.getElementById('edit-opt-3').value.trim()
+            ].filter(o => o);
+            q.correctAnswer = parseInt(document.getElementById('edit-correct-ans').value);
+            q.explanation = document.getElementById('edit-explanation').value.trim();
+
+            let { sIdx, cIdx, eIdx } = currentExamRef;
+            if (sIdx !== null && cIdx !== null && eIdx !== null) {
+                let examObj = appData.subjects[sIdx].chapters[cIdx].exams[eIdx];
+                let originalQ = examObj.questions.find(item => item.id === q.id) || examObj.questions[currentQuestionIndex];
+                if (originalQ) {
+                    originalQ.questionText = q.questionText;
+                    originalQ.options = q.options;
+                    originalQ.correctAnswer = q.correctAnswer;
+                    originalQ.explanation = q.explanation;
+                }
+                saveAppDataToCloud();
+            }
+
+            closeEditQuestionModal();
+            renderQuestion();
+            renderPalette();
+            alert('Đã cập nhật câu hỏi thành công!');
+        }
+
+        function selectAnswer(optIdx) {
+            if (userAnswers[currentQuestionIndex] !== undefined) return;
+            userAnswers[currentQuestionIndex] = optIdx;
+            let q = activeQuestions[currentQuestionIndex];
+            
+            if (optIdx !== q.correctAnswer) {
+                if (!userPersonalData.mistakes.some(m => m.questionText === q.questionText)) {
+                    userPersonalData.mistakes.push({ ...q, dateAdded: new Date().toISOString() });
+                    saveUserPersonalData();
+                }
+            }
+            recordHabitToday();
+            
+            renderQuestion();
+            renderPalette();
+            updateStats();
+
+            if (settings.autoNext && currentQuestionIndex < activeQuestions.length - 1) {
+                setTimeout(() => nextQuestion(), 400);
+            }
+        }
+
+        function nextQuestion() { if (currentQuestionIndex < activeQuestions.length - 1) { currentQuestionIndex++; renderQuestion(); renderPalette(); } }
+        function prevQuestion() { if (currentQuestionIndex > 0) { currentQuestionIndex--; renderQuestion(); renderPalette(); } }
+        function goToQuestion(idx) { currentQuestionIndex = idx; renderQuestion(); renderPalette(); }
+        function markUnsure() { unsureQuestions[currentQuestionIndex] = !unsureQuestions[currentQuestionIndex]; renderQuestion(); renderPalette(); }
+
+        function renderPalette() {
+            const palette = document.getElementById('question-palette');
+            let html = '';
+            activeQuestions.forEach((_, idx) => {
+                let bg = "bg-slate-100 text-slate-700 hover:bg-slate-200";
+                if (userAnswers[idx] !== undefined) {
+                    bg = (userAnswers[idx] === activeQuestions[idx].correctAnswer) ? "bg-emerald-600 text-white" : "bg-rose-600 text-white";
+                }
+                if (unsureQuestions[idx]) bg = "bg-[#FF4081] text-white";
+                if (idx === currentQuestionIndex) bg += " ring-2 ring-[#D6336C]";
+                html += `<button onclick="goToQuestion(${idx})" class="h-9 rounded-lg font-bold text-xs transition ${bg}">${idx + 1}</button>`;
+            });
+            palette.innerHTML = html;
+        }
+
+        function updateStats() {
+            let completed = Object.keys(userAnswers).length;
+            let correct = 0;
+            Object.keys(userAnswers).forEach(idx => { if (userAnswers[idx] === activeQuestions[idx].correctAnswer) correct++; });
+            let score = activeQuestions.length > 0 ? (correct / activeQuestions.length) * 10 : 0;
+            document.getElementById('stat-completed').innerText = `${completed}/${activeQuestions.length}`;
+            document.getElementById('stat-correct').innerText = correct;
+            document.getElementById('stat-score').innerText = score.toFixed(2);
+        }
+
+        function toggleSettingShowAnswer(el) { settings.showAnswer = el.checked; renderQuestion(); }
+        function toggleSettingAutoNext(el) { settings.autoNext = el.checked; }
+        function toggleShuffleQuestions(el) { settings.shuffleQ = el.checked; }
+        function toggleShuffleAnswers(el) { settings.shuffleA = el.checked; }
+
+        function updateMistakeBadge() {
+            const badge = document.getElementById('badge-mistakes');
+            let mistakes = userPersonalData.mistakes || [];
+            if (mistakes.length > 0) {
+                badge.innerText = mistakes.length;
+                badge.classList.remove('hidden');
+            } else { badge.classList.add('hidden'); }
+        }
+
+        function renderMistakes() {
+            const container = document.getElementById('mistakes-container');
+            let mistakes = userPersonalData.mistakes || [];
+            if (mistakes.length === 0) {
+                container.innerHTML = `<div class="bg-white p-8 rounded-2xl text-center text-slate-400 col-span-2">Chưa có câu sai nào cần ôn tập.</div>`;
+                document.getElementById('btn-review-mistakes').classList.add('hidden');
+                return;
+            }
+            document.getElementById('btn-review-mistakes').classList.remove('hidden');
+            let html = '';
+            mistakes.forEach((m, idx) => {
+                html += `<div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3"><div class="flex justify-between items-start"><span class="bg-[#FFF5F8] text-[#D6336C] font-semibold px-3 py-1 rounded-lg text-xs border border-[#FFB6C1]">Câu sai #${idx + 1}</span><button onclick="removeMistake(${idx})" class="text-slate-400 hover:text-[#D6336C] text-xs">Đã thuộc (Xóa)</button></div><h4 class="font-bold text-slate-900 text-sm">${m.questionText}</h4><div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">`;
+                m.options.forEach((opt, oIdx) => {
+                    let isRight = oIdx === m.correctAnswer;
+                    html += `<div class="p-2.5 rounded-xl border ${isRight ? "bg-emerald-50 border-emerald-500 text-emerald-900 font-medium" : "bg-slate-50 border-slate-200 text-slate-600"}">${opt}</div>`;
+                });
+                html += `</div></div>`;
+            });
+            container.innerHTML = html;
+        }
+
+        function removeMistake(idx) {
+            userPersonalData.mistakes.splice(idx, 1);
+            saveUserPersonalData();
+            renderMistakes();
+        }
+
+        function startMistakeReview() {
+            let mistakes = userPersonalData.mistakes || [];
+            if (mistakes.length === 0) return;
+            currentExam = { title: "Ôn tập câu sai", questions: JSON.parse(JSON.stringify(mistakes)) };
+            document.getElementById('exam-title-header').innerText = currentExam.title;
+            document.getElementById('exam-badge-subject').innerText = "Sổ tay câu sai";
+            activeQuestions = JSON.parse(JSON.stringify(currentExam.questions));
+            currentQuestionIndex = 0; userAnswers = {}; unsureQuestions = {};
+            switchTab('exam');
+            renderQuestion(); renderPalette(); updateStats();
+        }
+
+        function recordHabitToday() {
+            let todayStr = new Date().toISOString().split('T')[0];
+            if (!userPersonalData.habits) userPersonalData.habits = {};
+            userPersonalData.habits[todayStr] = true;
+            saveUserPersonalData();
+        }
+
+        function renderHabitTracker() {
+            const grid = document.getElementById('habit-grid');
+            if (!grid) return;
+            let html = '', streak = 0, today = new Date();
+            let dates = [];
+            for (let i = 6; i >= 0; i--) {
+                let d = new Date(); d.setDate(today.getDate() - i); dates.push(d);
+            }
+            dates.forEach(d => {
+                let dateStr = d.toISOString().split('T')[0];
+                let isChecked = userPersonalData.habits && userPersonalData.habits[dateStr];
+                let dayName = d.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' });
+                if (isChecked) streak++;
+                html += `<div class="bg-slate-50 p-4 rounded-2xl border ${isChecked ? 'border-[#D6336C] bg-[#FFF5F8]' : 'border-slate-200'} text-center space-y-2"><div class="text-xs font-semibold text-slate-500">${dayName}</div><div class="text-xl ${isChecked ? 'text-[#D6336C]' : 'text-slate-300'}"><i class="fa-solid ${isChecked ? 'fa-circle-check' : 'fa-circle'}"></i></div><div class="text-[10px] ${isChecked ? 'text-[#D6336C] font-bold' : 'text-slate-400'}">${isChecked ? 'Đã học' : 'Chưa học'}</div></div>`;
+            });
+            grid.innerHTML = html;
+            document.getElementById('streak-count').innerText = streak;
+        }
+
+        function exportBackup() {
+            if (!currentUser || currentUser.role !== 'admin') return alert('Bạn không có quyền thực hiện thao tác này!');
+            let dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appData, null, 2));
+            let dlAnchor = document.createElement('a');
+            dlAnchor.setAttribute("href", dataStr);
+            dlAnchor.setAttribute("download", "vmu_exam_backup.json");
+            document.body.appendChild(dlAnchor);
+            dlAnchor.click();
+            dlAnchor.remove();
+        }
+
+        async function importBackup(event) {
+            if (!currentUser || currentUser.role !== 'admin') {
+                return alert('Bạn không có quyền thực hiện thao tác này!');
+            }
+
+            let file = event.target.files[0];
+            if (!file) return;
+
+            try {
+                const text = await file.text();
+                const imported = JSON.parse(text);
+
+                if (
+                    !imported ||
+                    typeof imported !== 'object' ||
+                    !Array.isArray(imported.subjects)
+                ) {
+                    alert('File JSON không hợp lệ!');
+                    return;
+                }
+
+                appData = imported;
+
+                // Lưu local trước, sau đó upload thật lên Firebase.
+                saveAppDataToLocal();
+                const success = await forceSaveAppDataToCloud();
+
+                renderHome();
+
+                if (success) {
+                    alert('Nhập dữ liệu thành công và đã đồng bộ lên Cloud!');
+                } else {
+                    alert('Đã nhập dữ liệu và lưu local, nhưng chưa upload được lên Cloud. Hãy kiểm tra kết nối Firebase.');
+                }
+
+            } catch (err) {
+                console.error('[IMPORT] Lỗi:', err);
+                alert('Lỗi đọc file JSON!');
+            } finally {
+                // Cho phép chọn lại chính file đó.
+                event.target.value = '';
+            }
+        }
+    </script>
+</body>
+</html>
