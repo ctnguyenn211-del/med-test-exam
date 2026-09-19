@@ -853,7 +853,7 @@
             
             document.getElementById('modal-input-folder').value = '';
             document.getElementById('modal-input-docs').value = '';
-            document.getElementById('modal-input-new-chapter').value = '';
+            document.getElementById('modal-[#modal-input-new-chapter]') ? document.getElementById('modal-input-new-chapter').value = '' : null;
             
             updateChapterDropdown();
             document.getElementById('modal-exam').classList.remove('hidden');
@@ -878,7 +878,7 @@
         }
 
         function handleChapterSelectChange() {
-            const val = document.getElementById('modal-select-[#modal-select-chapter]').value;
+            const val = document.getElementById('modal-select-chapter').value;
             const newChapContainer = document.getElementById('new-chapter-input-container');
             if (val === "NEW") {
                 newChapContainer.classList.remove('hidden');
@@ -983,84 +983,93 @@
             alert(`Thành công! Đã nhập ${processedCount} bài học mới.`);
         }
 
-        // BỘ BÓC TÁCH CÂU HỎI HOÀN HẢO - XỬ LÝ CHÍNH XÁC DẤU * TRƯỚC VÀ SAU CỦA FILE WORD
+        // BỘ BÓC TÁCH CÂU HỎI THÔNG MINH - DIỆT SẠCH LẶP CHỮ A. A., B. B. & ĐỌC DẤU * CHÍNH XÁC
         function parseBulkQuestions(text) {
             if (!text) return [];
 
-            let rawText = text.replace(/\r\n/g, ' \n ').replace(/\r/g, ' \n ');
-            let blocks = rawText.split(/(?=(?:Q\s*[:\.]|Q\s*\d+[\.:]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:]\s+[A-Z]))/i);
+            let rawText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            let blocks = rawText.split(/(?=(?:^|\n)\s*(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:]\s+[A-Z\u00C0-\u1EF9]))/i);
             let questions = [];
 
             blocks.forEach(block => {
                 block = block.trim();
                 if (!block) return;
 
-                // 1. Tách giải thích nếu có
+                // 1. Tách giải thích
                 let explanation = "";
-                let expMatch = block.match(/(?:Giải\s*thích|Explanation|Exp|E)[\.\:\s]+(.*)$/i);
+                let expMatch = block.match(/(?:Giải\s*thích|Explanation|Exp)[\.\:\s]+([\s\S]*)$/i);
                 if (expMatch) {
                     explanation = expMatch[1].trim();
                     block = block.substring(0, expMatch.index).trim();
                 }
 
-                // 2. Tìm câu hỏi và 4 đáp án A, B, C, D (cho phép có dấu * ở trước/sau A,B,C,D)
-                let optRegex = /^(.*?)(?:\s|^)(\*?\s*A[\.\)\:]\s*)(.*?)(?:\s|^)(\*?\s*B[\.\)\:]\s*)(.*?)(?:\s|^)(\*?\s*C[\.\)\:]\s*)(.*?)(?:\s|^)(\*?\s*D[\.\)\:]\s*)(.*)$/i;
-                let match = block.match(optRegex);
+                // 2. Tách đáp án đúng dạng "Đáp án: A" ở cuối khối
+                let explicitKeyIdx = -1;
+                let keyMatch = block.match(/(?:Đáp\s*án|Answer|Key|Ans|ĐA)[\.\:\s]*([A-D])/i);
+                if (keyMatch) {
+                    explicitKeyIdx = keyMatch[1].toUpperCase().charCodeAt(0) - 65;
+                    block = block.substring(0, keyMatch.index).trim();
+                }
 
-                if (match) {
-                    let qText = match[1].replace(/^(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:])\s*/i, '').trim();
+                // 3. Định vị vị trí A, B, C, D
+                let aMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?A[\.\)\:\-\]\s]+)/i);
+                let bMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?B[\.\)\:\-\]\s]+)/i);
+                let cMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?C[\.\)\:\-\]\s]+)/i);
+                let dMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?D[\.\)\:\-\]\s]+)/i);
 
-                    let aDelim = match[2], aText = match[3];
-                    let bDelim = match[4], bText = match[5];
-                    let cDelim = match[6], cText = match[7];
-                    let dDelim = match[8], dText = match[9];
+                if (aMatch && bMatch && cMatch && dMatch) {
+                    let posA = aMatch.index + aMatch[0].indexOf(aMatch[1]);
+                    let posB = bMatch.index + bMatch[0].indexOf(bMatch[1]);
+                    let posC = cMatch.index + cMatch[0].indexOf(cMatch[1]);
+                    let posD = dMatch.index + dMatch[0].indexOf(dMatch[1]);
 
-                    let keyMatch = dText.match(/(?:\s|^)(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|ĐA\s*[:\.]|\*?[A-D][\.\)\:])\s*([A-D])[\.\)\:]?\s*$/i);
-                    let explicitKeyChar = null;
-                    if (keyMatch) {
-                        explicitKeyChar = keyMatch[1].toUpperCase();
-                        dText = dText.substring(0, keyMatch.index).trim();
-                    }
-
-                    let rawOpts = [
-                        { delim: aDelim, text: aText },
-                        { delim: bDelim, text: bText },
-                        { delim: cDelim, text: cText },
-                        { delim: dDelim, text: dText }
-                    ];
-
-                    let correctIdx = -1;
-                    let cleanOptions = [];
-
-                    rawOpts.forEach((optObj, idx) => {
-                        let combined = optObj.delim + " " + optObj.text;
-                        if (combined.includes('*')) {
-                            correctIdx = idx;
-                        }
-
-                        let cleanedText = optObj.text
-                            .replace(/\*/g, '')
-                            .replace(/^(?:[A-D][\.\)\:]\s*)+/i, '')
+                    if (posA < posB && posB < posC && posC < posD) {
+                        let qText = block.substring(0, posA)
+                            .replace(/^(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:])\s*/i, '')
                             .trim();
 
-                        let prefix = String.fromCharCode(65 + idx) + ". ";
-                        cleanOptions.push(prefix + cleanedText);
-                    });
+                        let rawA = block.substring(posA, posB);
+                        let rawB = block.substring(posB, posC);
+                        let rawC = block.substring(posC, posD);
+                        let rawD = block.substring(posD);
 
-                    if (correctIdx === -1 && explicitKeyChar) {
-                        correctIdx = explicitKeyChar.charCodeAt(0) - 65;
-                    }
+                        let rawOpts = [rawA, rawB, rawC, rawD];
+                        let detectedCorrectIdx = -1;
+                        let cleanOptions = [];
 
-                    if (correctIdx < 0 || correctIdx > 3) correctIdx = 0;
+                        rawOpts.forEach((optStr, idx) => {
+                            if (optStr.includes('*')) {
+                                detectedCorrectIdx = idx;
+                            }
 
-                    if (qText && cleanOptions[0] && cleanOptions[1]) {
-                        questions.push({
-                            id: questions.length + 1,
-                            questionText: qText,
-                            options: cleanOptions,
-                            correctAnswer: correctIdx,
-                            explanation: explanation
+                            // Xóa triệt để mọi dấu * và các ký tự A., B., C., D., A) lặp ở đầu chuỗi
+                            let cleaned = optStr
+                                .replace(/\*/g, '')
+                                .replace(/^[\s\u00A0\t\r\n]+/g, '')
+                                .replace(/^(?:[\(\[]?[A-Da-d][\.\)\:\-\]\s]+\s*)+/gi, '')
+                                .replace(/^[\s\u00A0\t\r\n]+/g, '')
+                                .trim();
+
+                            let prefix = String.fromCharCode(65 + idx) + ". ";
+                            cleanOptions.push(prefix + cleaned);
                         });
+
+                        if (detectedCorrectIdx === -1 && explicitKeyIdx !== -1) {
+                            detectedCorrectIdx = explicitKeyIdx;
+                        }
+                        if (detectedCorrectIdx < 0 || detectedCorrectIdx > 3) {
+                            detectedCorrectIdx = 0;
+                        }
+
+                        if (qText && cleanOptions[0] && cleanOptions[1]) {
+                            questions.push({
+                                id: questions.length + 1,
+                                questionText: qText,
+                                options: cleanOptions,
+                                correctAnswer: detectedCorrectIdx,
+                                explanation: explanation
+                            });
+                        }
                     }
                 }
             });
