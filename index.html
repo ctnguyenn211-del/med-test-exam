@@ -322,7 +322,7 @@
         </div>
     </div>
 
-    <!-- Script xử lý logic hoàn chỉnh & Đồng bộ Dữ liệu kép -->
+    <!-- Script xử lý logic -->
     <script>
         let appData = { subjects: [] };
         let userPersonalData = { mistakes: [], habits: {} };
@@ -337,6 +337,7 @@
         let collapsedSubjects = {};
         let collapsedChapters = {};
         let renameTarget = null;
+        let syncTimeout = null;
 
         const ADMIN_PASSWORD = "212696";
 
@@ -513,9 +514,15 @@
                 statusEl.className = "text-xs px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800";
                 statusEl.innerText = "Đã duyệt";
             }
+            let btnParent = statusEl ? statusEl.closest('.flex') : null;
+            if (btnParent) {
+                let approveBtn = btnParent.querySelector('button');
+                if (approveBtn) approveBtn.remove();
+            }
+
             try {
                 let docRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
-                await window.firebaseSetDoc(docRef, { status: 'approved' }, { merge: true });
+                window.firebaseSetDoc(docRef, { status: 'approved' }, { merge: true });
             } catch(e) {}
         }
 
@@ -523,443 +530,534 @@
             if (confirm(`Xóa user ${username}?`)) {
                 let rowEl = document.getElementById(`user-row-${username}`);
                 if (rowEl) rowEl.remove();
+
                 try {
                     let docRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
-                    await window.firebaseDeleteDoc(docRef);
+                    window.firebaseSetDoc(docRef, { status: 'deleted' }, { merge: true });
                 } catch(e) {}
             }
         }
 
-        /* --- XỬ LÝ ĐỒNG BỘ DỮ LIỆU CHÍNH --- */
         async function loadAppData() {
+            let localData = localStorage.getItem("vmu_local_exam_backup");
+            if (localData) {
+                try { 
+                    appData = JSON.parse(localData); 
+                    renderHome(); 
+                } catch(err) {}
+            }
+
             try {
                 if (window.firebaseDB) {
-                    let docRef = window.firebaseDoc(window.firebaseDB, "app_data", "main");
-                    let snap = await window.firebaseGetDoc(docRef);
-                    if (snap.exists() && snap.data().subjects) {
-                        appData = snap.data();
-                        localStorage.setItem("vmu_app_data", JSON.stringify(appData));
-                        renderSubjects();
+                    const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
+                    const docSnap = await window.firebaseGetDoc(docRef);
+                    if (docSnap.exists()) {
+                        let cloudData = docSnap.data();
+                        let cloudStr = JSON.stringify(cloudData);
+                        if (cloudStr !== localData) {
+                            appData = cloudData;
+                            localStorage.setItem("vmu_local_exam_backup", cloudStr);
+                            renderHome();
+                        }
                         return;
                     }
                 }
-            } catch(e) {
-                console.error("Lỗi Firebase loadAppData:", e);
+            } catch (e) {}
+
+            if (!appData.subjects || appData.subjects.length === 0) {
+                appData = {
+                    subjects: [{
+                        name: "Sinh lý học",
+                        chapters: [{
+                            chapterName: "Chương 1: Máu",
+                            exams: [{
+                                id: "ex_1",
+                                title: "Bài 1: Khối lượng máu",
+                                questions: [{
+                                    id: 1,
+                                    questionText: "Khối lượng máu toàn phần chiếm bao nhiêu phần trăm trọng lượng cơ thể?",
+                                    options: ["A. 4 - 5%", "B. 6 - 8%", "C. 10 - 12%", "D. 15 - 20%"],
+                                    correctAnswer: 1,
+                                    explanation: "Khoảng 6 - 8% trọng lượng cơ thể."
+                                }]
+                            }]
+                        }]
+                    }]
+                };
             }
-            let local = localStorage.getItem("vmu_app_data");
-            if (local) {
-                try { appData = JSON.parse(local); } catch(e) {}
-            }
-            renderSubjects();
+            renderHome();
         }
 
-        async function saveAppData() {
-            localStorage.setItem("vmu_app_data", JSON.stringify(appData));
-            if (window.firebaseDB && currentUser && currentUser.role === 'admin') {
+        function saveAppDataToCloud() {
+            if (!currentUser || currentUser.role !== 'admin') return;
+            let jsonStr = JSON.stringify(appData);
+            localStorage.setItem("vmu_local_exam_backup", jsonStr);
+
+            if (syncTimeout) clearTimeout(syncTimeout);
+            syncTimeout = setTimeout(async () => {
                 try {
-                    let docRef = window.firebaseDoc(window.firebaseDB, "app_data", "main");
-                    await window.firebaseSetDoc(docRef, appData);
-                } catch(e) {
-                    console.error("Lỗi Firebase saveAppData:", e);
-                }
-            }
+                    if (window.firebaseDB) {
+                        const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
+                        await window.firebaseSetDoc(docRef, appData);
+                    }
+                } catch (e) {}
+            }, 800);
         }
 
         async function loadUserPersonalData() {
-            if (!currentUser) return;
+            let userKey = currentUser.username;
             try {
                 if (window.firebaseDB) {
-                    let docRef = window.firebaseDoc(window.firebaseDB, "user_data", currentUser.username);
-                    let snap = await window.firebaseGetDoc(docRef);
-                    if (snap.exists()) {
-                        userPersonalData = snap.data();
-                        localStorage.setItem(`vmu_user_data_${currentUser.username}`, JSON.stringify(userPersonalData));
-                        updateMistakesBadge();
-                        renderHabitTracker();
-                        return;
+                    const docRef = window.firebaseDoc(window.firebaseDB, "users_data", userKey);
+                    const docSnap = await window.firebaseGetDoc(docRef);
+                    if (docSnap.exists()) {
+                        userPersonalData = docSnap.data();
+                    } else {
+                        userPersonalData = { mistakes: [], habits: {} };
                     }
                 }
-            } catch(e) {}
-            let local = localStorage.getItem(`vmu_user_data_${currentUser.username}`);
-            if (local) {
-                try { userPersonalData = JSON.parse(local); } catch(e) {}
+            } catch(e) {
+                let local = localStorage.getItem("vmu_personal_" + userKey);
+                if (local) userPersonalData = JSON.parse(local);
             }
-            updateMistakesBadge();
+            updateMistakeBadge();
             renderHabitTracker();
         }
 
-        async function saveUserPersonalData() {
-            if (!currentUser) return;
-            localStorage.setItem(`vmu_user_data_${currentUser.username}`, JSON.stringify(userPersonalData));
-            if (window.firebaseDB) {
-                try {
-                    let docRef = window.firebaseDoc(window.firebaseDB, "user_data", currentUser.username);
-                    await window.firebaseSetDoc(docRef, userPersonalData);
-                } catch(e) {}
-            }
-        }
-
-        /* --- XỬ LÝ ĐỌC VÀ PARSE FILE WORD (.DOCX) --- */
-        function parseWordContentToQuestions(text) {
-            let lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-            let questions = [];
-            let currentQ = null;
-
-            for (let line of lines) {
-                let qMatch = line.match(/^(?:Câu|Question|\d+[\.\:\)])\s*(\d+)[\.\:\)]?\s*(.*)/i) || line.match(/^(Câu\s*\d+[\:\.]?\s*)(.*)/i);
-                let optMatch = line.match(/^(\*?\s*[A-D])[\.\:\)]\s*(.*)/i);
-                let ansMatch = line.match(/^(?:Đáp án|Đáp án đúng|Key)\s*[:\-]?\s*([A-D])/i);
-                let expMatch = line.match(/^(?:Giải thích|Lời giải)\s*[:\-]?\s*(.*)/i);
-
-                if (ansMatch && currentQ) {
-                    let key = ansMatch[1].toUpperCase();
-                    let idx = ['A', 'B', 'C', 'D'].indexOf(key);
-                    if (idx !== -1) currentQ.correct = idx;
-                } else if (expMatch && currentQ) {
-                    currentQ.explanation = expMatch[1];
-                } else if (optMatch && currentQ) {
-                    let rawKey = optMatch[1].trim();
-                    let isCorrect = rawKey.startsWith('*');
-                    let keyChar = rawKey.replace('*', '').trim().toUpperCase();
-                    let optText = optMatch[2].trim();
-                    let optIdx = ['A', 'B', 'C', 'D'].indexOf(keyChar);
-                    if (optIdx !== -1) {
-                        currentQ.options[optIdx] = optText;
-                        if (isCorrect) currentQ.correct = optIdx;
-                    }
-                } else if (qMatch) {
-                    if (currentQ && currentQ.question) {
-                        questions.push(currentQ);
-                    }
-                    currentQ = {
-                        question: line.replace(/^(?:Câu|Question)\s*\d+[\.\:\)]?\s*/i, '').trim() || line,
-                        options: ['', '', '', ''],
-                        correct: 0,
-                        explanation: ''
-                    };
-                } else {
-                    if (currentQ) {
-                        if (currentQ.options.some(o => o !== '')) {
-                            currentQ.explanation = (currentQ.explanation ? currentQ.explanation + ' ' : '') + line;
-                        } else {
-                            currentQ.question += ' ' + line;
-                        }
-                    }
+        function saveUserPersonalData() {
+            let userKey = currentUser.username;
+            localStorage.setItem("vmu_personal_" + userKey, JSON.stringify(userPersonalData));
+            try {
+                if (window.firebaseDB) {
+                    const docRef = window.firebaseDoc(window.firebaseDB, "users_data", userKey);
+                    window.firebaseSetDoc(docRef, userPersonalData);
                 }
-            }
-            if (currentQ && currentQ.question) {
-                questions.push(currentQ);
-            }
-            return questions;
+            } catch(e) {}
+            updateMistakeBadge();
         }
 
-        /* --- XỬ LÝ MODAL & TẢI FILE / FOLDER --- */
-        function openSubjectModal() { document.getElementById('modal-subject').classList.remove('hidden'); }
-        function closeSubjectModal() { document.getElementById('modal-subject').classList.add('hidden'); document.getElementById('input-new-subject').value = ''; }
+        function switchTab(tabId) {
+            document.getElementById('tab-home').classList.add('hidden');
+            document.getElementById('tab-exam').classList.add('hidden');
+            document.getElementById('tab-mistakes').classList.add('hidden');
+            document.getElementById('tab-habit').classList.add('hidden');
 
-        async function saveNewSubject() {
-            let name = document.getElementById('input-new-subject').value.trim();
-            if (!name) return;
-            appData.subjects.push({ name: name, chapters: [] });
-            await saveAppData();
-            renderSubjects();
-            closeSubjectModal();
-        }
+            document.getElementById('nav-home').classList.remove('bg-red-800');
+            document.getElementById('nav-mistakes').classList.remove('bg-red-800');
+            document.getElementById('nav-habit').classList.remove('bg-red-800');
 
-        function openCreateExamModal() {
-            let selectSub = document.getElementById('modal-select-subject');
-            selectSub.innerHTML = '';
-            appData.subjects.forEach((s, idx) => {
-                selectSub.innerHTML += `<option value="${idx}">${s.name}</option>`;
-            });
-            updateChapterDropdown();
-            document.getElementById('modal-exam').classList.remove('hidden');
-        }
-
-        function closeCreateExamModal() {
-            document.getElementById('modal-exam').classList.add('hidden');
-            document.getElementById('modal-input-folder').value = '';
-            document.getElementById('modal-input-docs').value = '';
-        }
-
-        function updateChapterDropdown() {
-            let sIdx = document.getElementById('modal-select-subject').value;
-            let cSelect = document.getElementById('modal-select-chapter');
-            cSelect.innerHTML = '<option value="">-- Chọn chương có sẵn --</option><option value="new">+ Thêm chương mới</option>';
-            if (sIdx !== "" && appData.subjects[sIdx]) {
-                appData.subjects[sIdx].chapters.forEach((c, idx) => {
-                    cSelect.innerHTML += `<option value="${idx}">${c.title}</option>`;
-                });
-            }
-            handleChapterSelectChange();
-        }
-
-        function handleChapterSelectChange() {
-            let val = document.getElementById('modal-select-chapter').value;
-            let inputContainer = document.getElementById('new-chapter-input-container');
-            if (val === 'new') {
-                inputContainer.classList.remove('hidden');
-            } else {
-                inputContainer.classList.add('hidden');
+            if (tabId === 'home') {
+                document.getElementById('tab-home').classList.remove('hidden');
+                document.getElementById('nav-home').classList.add('bg-red-800');
+                renderHome();
+            } else if (tabId === 'exam') {
+                document.getElementById('tab-exam').classList.remove('hidden');
+            } else if (tabId === 'mistakes') {
+                document.getElementById('tab-mistakes').classList.remove('hidden');
+                document.getElementById('nav-mistakes').classList.add('bg-red-800');
+                renderMistakes();
+            } else if (tabId === 'habit') {
+                document.getElementById('tab-habit').classList.remove('hidden');
+                document.getElementById('nav-habit').classList.add('bg-red-800');
+                renderHabitTracker();
             }
         }
 
-        async function saveNewExam() {
-            let sIdx = document.getElementById('modal-select-subject').value;
-            if (sIdx === "" || sIdx === null) {
-                alert("Vui lòng chọn môn học đích!");
-                return;
-            }
-            sIdx = parseInt(sIdx);
-            let subject = appData.subjects[sIdx];
-            if (!subject) return;
-
-            let folderInput = document.getElementById('modal-input-folder');
-            let docInput = document.getElementById('modal-input-docs');
-
-            // CÁCH 1: TẢI NHIỀU FOLDER
-            if (folderInput.files && folderInput.files.length > 0) {
-                let files = Array.from(folderInput.files).filter(f => f.name.endsWith('.docx') && !f.name.startsWith('~$'));
-                if (files.length === 0) {
-                    alert("Không tìm thấy file .docx hợp lệ trong folder!");
-                    return;
-                }
-
-                for (let file of files) {
-                    let relPath = file.webkitRelativePath || file.name;
-                    let parts = relPath.split('/');
-                    let chapterName = parts.length > 1 ? parts[parts.length - 2] : "Chương Chung";
-                    let examName = file.name.replace(/\.docx$/i, '');
-
-                    let chapter = subject.chapters.find(c => c.title.toLowerCase() === chapterName.toLowerCase());
-                    if (!chapter) {
-                        chapter = { title: chapterName, exams: [] };
-                        subject.chapters.push(chapter);
-                    }
-
-                    try {
-                        let arrayBuffer = await file.arrayBuffer();
-                        let result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-                        let questions = parseWordContentToQuestions(result.value);
-                        if (questions.length > 0) {
-                            let existingExam = chapter.exams.find(e => e.title.toLowerCase() === examName.toLowerCase());
-                            if (existingExam) {
-                                existingExam.questions = questions;
-                            } else {
-                                chapter.exams.push({ title: examName, questions: questions });
-                            }
-                        }
-                    } catch(e) {}
-                }
-
-                await saveAppData();
-                renderSubjects();
-                closeCreateExamModal();
-                alert("Đã nhập toàn bộ Folder và đồng bộ thành công!");
-                return;
-            }
-
-            // CÁCH 2: TẢI FILE LẺ
-            if (docInput.files && docInput.files.length > 0) {
-                let files = Array.from(docInput.files).filter(f => f.name.endsWith('.docx') && !f.name.startsWith('~$'));
-                if (files.length === 0) {
-                    alert("Không tìm thấy file .docx hợp lệ!");
-                    return;
-                }
-
-                let cVal = document.getElementById('modal-select-chapter').value;
-                let chapterName = "";
-
-                if (cVal === "new") {
-                    chapterName = document.getElementById('modal-input-new-chapter').value.trim() || "Chương Mới";
-                } else if (cVal !== "") {
-                    let cIdx = parseInt(cVal);
-                    chapterName = subject.chapters[cIdx] ? subject.chapters[cIdx].title : "Chương 1";
-                } else {
-                    chapterName = "Chương 1";
-                }
-
-                let chapter = subject.chapters.find(c => c.title.toLowerCase() === chapterName.toLowerCase());
-                if (!chapter) {
-                    chapter = { title: chapterName, exams: [] };
-                    subject.chapters.push(chapter);
-                }
-
-                for (let file of files) {
-                    let examName = file.name.replace(/\.docx$/i, '');
-                    try {
-                        let arrayBuffer = await file.arrayBuffer();
-                        let result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-                        let questions = parseWordContentToQuestions(result.value);
-                        if (questions.length > 0) {
-                            let existingExam = chapter.exams.find(e => e.title.toLowerCase() === examName.toLowerCase());
-                            if (existingExam) {
-                                existingExam.questions = questions;
-                            } else {
-                                chapter.exams.push({ title: examName, questions: questions });
-                            }
-                        }
-                    } catch(e) {}
-                }
-
-                await saveAppData();
-                renderSubjects();
-                closeCreateExamModal();
-                alert("Đã nhập các file Word lẻ và đồng bộ thành công!");
-                return;
-            }
-
-            alert("Vui lòng chọn Folder hoặc File Word để tải lên!");
+        function extractNumber(name) {
+            let match = name.match(/\d+/);
+            return match ? parseInt(match[0]) : 9999;
         }
 
-        /* --- DISPLAY HOME & SUBJECTS --- */
-        function renderSubjects() {
-            let container = document.getElementById('subjects-container');
+        function renderHome() {
+            const container = document.getElementById('subjects-container');
             if (!appData.subjects || appData.subjects.length === 0) {
-                container.innerHTML = `<p class="text-center text-slate-400 py-10">Chưa có môn học nào. Hãy bấm "Thêm Môn Học" hoặc "Tạo Đề"!</p>`;
+                container.innerHTML = `<div class="bg-white p-8 rounded-2xl text-center text-slate-400">Chưa có môn học nào.</div>`;
                 return;
             }
 
             let isAdmin = currentUser && currentUser.role === 'admin';
             let html = '';
+            appData.subjects.forEach((subj, sIdx) => {
+                if (subj.chapters && subj.chapters.length > 0) {
+                    subj.chapters.sort((a, b) => extractNumber(a.chapterName) - extractNumber(b.chapterName));
+                }
 
-            appData.subjects.forEach((subject, sIdx) => {
-                let isSubCollapsed = collapsedSubjects[sIdx];
+                let isSubjCollapsed = collapsedSubjects[sIdx] !== undefined ? collapsedSubjects[sIdx] : true;
                 html += `
                     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                        <div class="flex justify-between items-center p-5 bg-slate-50 border-b cursor-pointer" onclick="toggleSubjectCollapse(${sIdx})">
-                            <h3 class="font-bold text-slate-800 text-lg"><i class="fa-solid fa-book text-red-600 mr-2"></i> ${subject.name}</h3>
-                            <div class="flex items-center space-x-2" onclick="event.stopPropagation()">
-                                ${isAdmin ? `
-                                    <button onclick="openRenameModal('subject', ${sIdx})" class="text-slate-400 hover:text-blue-600 p-1"><i class="fa-solid fa-pen"></i></button>
-                                    <button onclick="deleteSubject(${sIdx})" class="text-slate-400 hover:text-red-600 p-1"><i class="fa-solid fa-trash"></i></button>
-                                ` : ''}
-                                <i class="fa-solid ${isSubCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'} text-slate-400 cursor-pointer" onclick="toggleSubjectCollapse(${sIdx})"></i>
+                        <div class="bg-slate-50 px-6 py-4 flex justify-between items-center border-b border-slate-100">
+                            <div class="flex items-center space-x-3 cursor-pointer select-none" onclick="toggleSubjectCollapse(${sIdx})">
+                                <i class="fa-solid fa-chevron-${isSubjCollapsed ? 'right' : 'down'} text-slate-400 text-xs"></i>
+                                <h3 class="font-bold text-slate-900 text-lg flex items-center"><i class="fa-solid fa-book-medical text-red-600 mr-2"></i> ${subj.name}</h3>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                ${isAdmin ? `<button onclick="deleteSubject(${sIdx})" class="text-slate-400 hover:text-red-600 p-1 text-sm transition" title="Xóa môn"><i class="fa-solid fa-trash"></i></button>` : ''}
                             </div>
                         </div>
-
-                        <div class="${isSubCollapsed ? 'hidden' : 'p-4 space-y-3'}">
+                        <div class="p-6 space-y-4 ${isSubjCollapsed ? 'hidden' : ''}">
                 `;
 
-                if (!subject.chapters || subject.chapters.length === 0) {
-                    html += `<p class="text-xs text-slate-400 italic px-2">Chưa có chương nào.</p>`;
+                if (!subj.chapters || subj.chapters.length === 0) {
+                    html += `<p class="text-sm text-slate-400 italic">Chưa có chương học nào.</p>`;
                 } else {
-                    subject.chapters.forEach((chapter, cIdx) => {
-                        let cKey = `${sIdx}_${cIdx}`;
-                        let isChapCollapsed = collapsedChapters[cKey];
+                    subj.chapters.forEach((chap, cIdx) => {
+                        if (chap.exams && chap.exams.length > 0) {
+                            chap.exams.sort((a, b) => extractNumber(a.title) - extractNumber(b.title));
+                        }
+
+                        let chapKey = `${sIdx}_${cIdx}`;
+                        let isChapCollapsed = collapsedChapters[chapKey] !== undefined ? collapsedChapters[chapKey] : true;
                         html += `
-                            <div class="border border-slate-100 rounded-xl overflow-hidden">
-                                <div class="flex justify-between items-center p-3.5 bg-slate-100/60 cursor-pointer" onclick="toggleChapterCollapse('${cKey}')">
-                                    <h4 class="font-semibold text-slate-700 text-sm"><i class="fa-solid fa-folder-closed text-amber-500 mr-2"></i> ${chapter.title}</h4>
-                                    <div class="flex items-center space-x-2" onclick="event.stopPropagation()">
+                            <div class="space-y-2 bg-slate-50/60 p-4 rounded-xl border border-slate-100">
+                                <div class="flex justify-between items-center">
+                                    <div class="flex items-center space-x-2 cursor-pointer select-none" onclick="toggleChapterCollapse(${sIdx}, ${cIdx})">
+                                        <i class="fa-solid fa-chevron-${isChapCollapsed ? 'right' : 'down'} text-slate-400 text-xs"></i>
+                                        <h4 class="font-semibold text-slate-700 text-sm"><i class="fa-solid fa-bookmark text-amber-500 mr-2 text-xs"></i> ${chap.chapterName}</h4>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
                                         ${isAdmin ? `
-                                            <button onclick="openRenameModal('chapter', ${sIdx},${cIdx})" class="text-slate-400 hover:text-blue-600 p-1 text-xs"><i class="fa-solid fa-pen"></i></button>
-                                            <button onclick="deleteChapter(${sIdx},${cIdx})" class="text-slate-400 hover:text-red-600 p-1 text-xs"><i class="fa-solid fa-trash"></i></button>
+                                            <button onclick="openRenameModal('chapter', ${sIdx}, ${cIdx}, null)" class="text-slate-400 hover:text-blue-600 p-1 text-xs" title="Sửa tên chương"><i class="fa-solid fa-pen"></i></button>
+                                            <button onclick="deleteChapter(${sIdx}, ${cIdx})" class="text-slate-400 hover:text-red-600 p-1 text-xs" title="Xóa chương"><i class="fa-solid fa-trash"></i></button>
                                         ` : ''}
-                                        <i class="fa-solid ${isChapCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'} text-slate-400 text-xs cursor-pointer" onclick="toggleChapterCollapse('${cKey}')"></i>
                                     </div>
                                 </div>
-
-                                <div class="${isChapCollapsed ? 'hidden' : 'p-3 grid grid-cols-1 md:grid-cols-2 gap-3 bg-white'}">
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pl-4 pt-2 ${isChapCollapsed ? 'hidden' : ''}">
                         `;
 
-                        if (!chapter.exams || chapter.exams.length === 0) {
-                            html += `<p class="text-xs text-slate-400 italic col-span-2">Chưa có bài học nào.</p>`;
+                        if (!chap.exams || chap.exams.length === 0) {
+                            html += `<span class="text-xs text-slate-400 italic">Chưa có bài học.</span>`;
                         } else {
-                            chapter.exams.forEach((exam, eIdx) => {
+                            chap.exams.forEach((ex, eIdx) => {
                                 html += `
-                                    <div class="flex justify-between items-center p-3 rounded-xl border border-slate-100 hover:border-red-200 hover:bg-red-50/30 transition">
-                                        <div class="truncate max-w-[70%]">
-                                            <h5 class="font-medium text-slate-800 text-sm truncate">${exam.title}</h5>
-                                            <p class="text-[11px] text-slate-400">${exam.questions ? exam.questions.length : 0} câu hỏi</p>
+                                    <div class="bg-white p-4 rounded-xl border border-slate-200 hover:border-red-300 transition shadow-xs flex flex-col justify-between space-y-3">
+                                        <div>
+                                            <h5 class="font-bold text-slate-800 text-sm line-clamp-2">${ex.title}</h5>
+                                            <span class="text-xs text-slate-400 mt-1 block"><i class="fa-solid fa-circle-question mr-1"></i> ${ex.questions.length} câu hỏi</span>
                                         </div>
-                                        <div class="flex items-center space-x-2">
-                                            <button onclick="startExam(${sIdx}, ${cIdx}, ${eIdx})" class="bg-red-700 hover:bg-red-800 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition">Vào thi</button>
+                                        <div class="flex justify-between items-center pt-2 border-t border-slate-100">
+                                            <button onclick="startExam('${sIdx}', '${cIdx}', '${eIdx}')" class="bg-red-50 hover:bg-red-700 hover:text-white text-red-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition">Vào luyện đề</button>
                                             ${isAdmin ? `
-                                                <button onclick="openRenameModal('exam', ${sIdx}, ${cIdx},${eIdx})" class="text-slate-400 hover:text-blue-600 p-1 text-xs"><i class="fa-solid fa-pen"></i></button>
-                                                <button onclick="deleteExam(${sIdx}, ${cIdx},${eIdx})" class="text-slate-400 hover:text-red-600 p-1 text-xs"><i class="fa-solid fa-trash"></i></button>
-                                            ` : ''}
+                                            <div class="flex items-center space-x-1">
+                                                <button onclick="openRenameModal('exam', ${sIdx}, ${cIdx}, ${eIdx})" class="text-slate-400 hover:text-blue-600 p-1 text-xs" title="Sửa tên bài"><i class="fa-solid fa-pen"></i></button>
+                                                <button onclick="deleteExam('${sIdx}', ${cIdx}, ${eIdx})" class="text-slate-400 hover:text-red-600 text-xs p-1" title="Xóa bài"><i class="fa-solid fa-trash"></i></button>
+                                            </div>` : ''}
                                         </div>
                                     </div>
                                 `;
                             });
                         }
-
                         html += `</div></div>`;
                     });
                 }
-
                 html += `</div></div>`;
             });
-
             container.innerHTML = html;
         }
 
-        function toggleSubjectCollapse(sIdx) { collapsedSubjects[sIdx] = !collapsedSubjects[sIdx]; renderSubjects(); }
-        function toggleChapterCollapse(cKey) { collapsedChapters[cKey] = !collapsedChapters[cKey]; renderSubjects(); }
-
-        /* --- RENAME & DELETE --- */
-        async function deleteSubject(sIdx) { if (confirm("Xóa môn học này?")) { appData.subjects.splice(sIdx, 1); await saveAppData(); renderSubjects(); } }
-        async function deleteChapter(sIdx, cIdx) { if (confirm("Xóa chương này?")) { appData.subjects[sIdx].chapters.splice(cIdx, 1); await saveAppData(); renderSubjects(); } }
-        async function deleteExam(sIdx, cIdx, eIdx) { if (confirm("Xóa bài học này?")) { appData.subjects[sIdx].chapters[cIdx].exams.splice(eIdx, 1); await saveAppData(); renderSubjects(); } }
-
         function openRenameModal(type, sIdx, cIdx, eIdx) {
             renameTarget = { type, sIdx, cIdx, eIdx };
-            let val = "";
-            if (type === 'subject') val = appData.subjects[sIdx].name;
-            else if (type === 'chapter') val = appData.subjects[sIdx].chapters[cIdx].title;
-            else if (type === 'exam') val = appData.subjects[sIdx].chapters[cIdx].exams[eIdx].title;
+            let titleEl = document.getElementById('rename-modal-title');
+            let inputEl = document.getElementById('input-rename-val');
 
-            document.getElementById('input-rename-val').value = val;
+            if (type === 'chapter') {
+                titleEl.innerText = "Sửa tên Chương";
+                inputEl.value = appData.subjects[sIdx].chapters[cIdx].chapterName;
+            } else {
+                titleEl.innerText = "Sửa tên Bài học";
+                inputEl.value = appData.subjects[sIdx].chapters[cIdx].exams[eIdx].title;
+            }
             document.getElementById('modal-rename').classList.remove('hidden');
+            inputEl.focus();
         }
 
-        function closeRenameModal() { document.getElementById('modal-rename').classList.add('hidden'); }
+        function closeRenameModal() {
+            document.getElementById('modal-rename').classList.add('hidden');
+            renameTarget = null;
+        }
 
-        async function confirmRename() {
-            let val = document.getElementById('input-rename-val').value.trim();
-            if (!val || !renameTarget) return;
+        function confirmRename() {
+            let newVal = document.getElementById('input-rename-val').value.trim();
+            if (!newVal) return alert('Tên không được để trống!');
+
             let { type, sIdx, cIdx, eIdx } = renameTarget;
+            if (type === 'chapter') {
+                appData.subjects[sIdx].chapters[cIdx].chapterName = newVal;
+            } else {
+                appData.subjects[sIdx].chapters[cIdx].exams[eIdx].title = newVal;
+            }
 
-            if (type === 'subject') appData.subjects[sIdx].name = val;
-            else if (type === 'chapter') appData.subjects[sIdx].chapters[cIdx].title = val;
-            else if (type === 'exam') appData.subjects[sIdx].chapters[cIdx].exams[eIdx].title = val;
-
-            await saveAppData();
-            renderSubjects();
+            saveAppDataToCloud();
             closeRenameModal();
+            renderHome();
         }
 
-        /* --- LÀM BÀI THI --- */
-        function switchTab(tab) {
-            ['home', 'exam', 'mistakes', 'habit'].forEach(t => {
-                document.getElementById(`tab-${t}`).classList.add('hidden');
-                let navBtn = document.getElementById(`nav-${t}`);
-                if (navBtn) navBtn.className = "px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-red-800 transition";
-            });
-            document.getElementById(`tab-${tab}`).classList.remove('hidden');
-            let activeNav = document.getElementById(`nav-${tab}`);
-            if (activeNav) activeNav.className = "px-3 py-1.5 rounded-lg text-sm font-medium bg-red-800 transition";
+        function deleteChapter(sIdx, cIdx) {
+            if (confirm('Xóa chương này cùng toàn bộ đề thi bên trong?')) {
+                appData.subjects[sIdx].chapters.splice(cIdx, 1);
+                saveAppDataToCloud();
+                renderHome();
+            }
+        }
 
-            if (tab === 'mistakes') renderMistakes();
-            if (tab === 'habit') renderHabitTracker();
+        function toggleSubjectCollapse(sIdx) {
+            let current = collapsedSubjects[sIdx] !== undefined ? collapsedSubjects[sIdx] : true;
+            collapsedSubjects[sIdx] = !current;
+            renderHome();
+        }
+
+        function toggleChapterCollapse(sIdx, cIdx) {
+            let key = `${sIdx}_${cIdx}`;
+            let current = collapsedChapters[key] !== undefined ? collapsedChapters[key] : true;
+            collapsedChapters[key] = !current;
+            renderHome();
+        }
+
+        function openSubjectModal() {
+            document.getElementById('input-new-subject').value = '';
+            document.getElementById('modal-subject').classList.remove('hidden');
+        }
+        function closeSubjectModal() { document.getElementById('modal-subject').classList.add('hidden'); }
+        function saveNewSubject() {
+            const name = document.getElementById('input-new-subject').value.trim();
+            if (!name) return alert('Vui lòng nhập tên môn học!');
+            appData.subjects.push({ name: name, chapters: [] });
+            saveAppDataToCloud();
+            closeSubjectModal();
+            renderHome();
+        }
+        function deleteSubject(sIdx) {
+            if (confirm('Xóa môn học này?')) {
+                appData.subjects.splice(sIdx, 1);
+                saveAppDataToCloud();
+                renderHome();
+            }
+        }
+
+        function openCreateExamModal() {
+            const selectSubj = document.getElementById('modal-select-subject');
+            selectSubj.innerHTML = '';
+            appData.subjects.forEach((s, idx) => { selectSubj.innerHTML += `<option value="${idx}">${s.name}</option>`; });
+            
+            document.getElementById('modal-input-folder').value = '';
+            document.getElementById('modal-input-docs').value = '';
+            document.getElementById('modal-input-new-chapter').value = '';
+            
+            updateChapterDropdown();
+            document.getElementById('modal-exam').classList.remove('hidden');
+        }
+        function closeCreateExamModal() { document.getElementById('modal-exam').classList.add('hidden'); }
+
+        function updateChapterDropdown() {
+            const sIdx = document.getElementById('modal-select-subject').value;
+            const selectChap = document.getElementById('modal-select-chapter');
+            selectChap.innerHTML = '';
+            
+            if (sIdx === "" || !appData.subjects[sIdx]) return;
+            let subj = appData.subjects[sIdx];
+
+            if (subj.chapters && subj.chapters.length > 0) {
+                subj.chapters.forEach((chap, idx) => {
+                    selectChap.innerHTML += `<option value="${idx}">${chap.chapterName}</option>`;
+                });
+            }
+            selectChap.innerHTML += `<option value="NEW">➕ Thêm chương mới...</option>`;
+            handleChapterSelectChange();
+        }
+
+        function handleChapterSelectChange() {
+            const val = document.getElementById('modal-select-chapter').value;
+            const newChapContainer = document.getElementById('new-chapter-input-container');
+            if (val === "NEW") {
+                newChapContainer.classList.remove('hidden');
+            } else {
+                newChapContainer.classList.add('hidden');
+            }
+        }
+
+        // HÀM TẢI FILE
+        async function saveNewExam() {
+            const sIdx = document.getElementById('modal-select-subject').value;
+            const folderInput = document.getElementById('modal-input-folder');
+            const fileInput = document.getElementById('modal-input-docs');
+
+            if (sIdx === "" || sIdx === null) return alert('Vui lòng chọn môn học!');
+            let subj = appData.subjects[sIdx];
+            if (!subj) return alert('Vui lòng chọn môn học hợp lệ!');
+
+            let processedCount = 0;
+            let filesToProcess = [];
+
+            if (folderInput.files && folderInput.files.length > 0) {
+                for (let f of folderInput.files) filesToProcess.push({ file: f, isFolder: true });
+            }
+            if (fileInput.files && fileInput.files.length > 0) {
+                for (let f of fileInput.files) filesToProcess.push({ file: f, isFolder: false });
+            }
+
+            if (filesToProcess.length === 0) {
+                return alert('Vui lòng chọn ít nhất 1 file .docx hoặc folder!');
+            }
+
+            for (let item of filesToProcess) {
+                let file = item.file;
+                let fileName = file.name;
+
+                if (!fileName.toLowerCase().endsWith('.docx') || fileName.startsWith('~$')) continue;
+
+                try {
+                    let arrayBuffer = await file.arrayBuffer();
+                    let result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+                    let questions = parseBulkQuestions(result.value);
+
+                    if (questions && questions.length > 0) {
+                        let targetChapter = null;
+                        let examTitle = fileName.replace(/\.[^/.]+$/, "");
+
+                        if (item.isFolder) {
+                            let pathParts = file.webkitRelativePath ? file.webkitRelativePath.split('/') : [fileName];
+                            let chapterName = "Chương 1";
+                            if (pathParts.length > 1) {
+                                chapterName = pathParts[pathParts.length - 2].replace(/[_]/g, ' ').trim();
+                            }
+                            targetChapter = subj.chapters.find(c => c.chapterName.toLowerCase() === chapterName.toLowerCase());
+                            if (!targetChapter) {
+                                targetChapter = { chapterName: chapterName, exams: [] };
+                                subj.chapters.push(targetChapter);
+                            }
+                        } else {
+                            let chapSelectVal = document.getElementById('modal-select-chapter').value;
+                            if (chapSelectVal === "NEW") {
+                                let newChapName = document.getElementById('modal-input-new-chapter').value.trim() || "Chương mới";
+                                targetChapter = subj.chapters.find(c => c.chapterName.toLowerCase() === newChapName.toLowerCase());
+                                if (!targetChapter) {
+                                    targetChapter = { chapterName: newChapName, exams: [] };
+                                    subj.chapters.push(targetChapter);
+                                }
+                            } else {
+                                let idx = parseInt(chapSelectVal);
+                                if (!isNaN(idx) && subj.chapters[idx]) {
+                                    targetChapter = subj.chapters[idx];
+                                } else {
+                                    targetChapter = { chapterName: "Chương 1", exams: [] };
+                                    subj.chapters.push(targetChapter);
+                                }
+                            }
+                        }
+
+                        let existingExam = targetChapter.exams.find(e => e.title === examTitle);
+                        if (existingExam) {
+                            existingExam.questions = questions;
+                        } else {
+                            targetChapter.exams.push({
+                                id: 'ex_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+                                title: examTitle,
+                                questions: questions
+                            });
+                        }
+                        processedCount++;
+                    }
+                } catch (err) {
+                    console.error("Lỗi đọc file:", fileName, err);
+                }
+            }
+
+            if (processedCount === 0) {
+                return alert('Không bóc tách được câu hỏi nào! Vui lòng đảm bảo bạn chọn đúng file .docx.');
+            }
+
+            saveAppDataToCloud();
+            closeCreateExamModal();
+            renderHome();
+            alert(`Thành công! Đã nhập ${processedCount} bài học mới.`);
+        }
+
+        // BỘ TÁCH CÂU HỎI THUẬT TOÁN TỐI ƯU TUYỆT ĐỐI
+        function parseBulkQuestions(text) {
+            if (!text) return [];
+
+            let rawText = text.replace(/\r\n/g, ' ').replace(/\n/g, ' ').replace(/\r/g, ' ');
+            let blocks = rawText.split(/(?=(?:Q\s*[:\.]|Q\s*\d+[\.:]|Câu\s*\d+[\.:]|Question\s*\d+[\.:]))/i);
+            let questions = [];
+
+            blocks.forEach(block => {
+                block = block.trim();
+                if (!block) return;
+
+                let match = block.match(/^(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:])?\s*(.*?)(?=\s*A[\.\)\:]\s*)(.*?)(?=\s*B[\.\)\:]\s*)(.*?)(?=\s*C[\.\)\:]\s*)(.*?)(?=\s*D[\.\)\:]\s*)(.*?)(?=\s*(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|ĐA\s*[:\.]|\*?[A-D][\.\)\:]|$))(?:(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|ĐA\s*[:\.]|\*?[A-D][\.\)\:])\s*([A-D])[\.\)\:]?\s*)?(?:(?:E\s*[:\.]|Exp\s*[:\.]|Explanation\s*[:\.]|Giải\s*thích\s*[:\.]|\*)\s*(.*))?$/i);
+
+                if (match) {
+                    let qText = match[1].replace(/^(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:])\s*/i, '').trim();
+                    let optA = "A. " + match[2].replace(/^A[\.\)\:]\s*/i, '').trim();
+                    let optB = "B. " + match[3].replace(/^B[\.\)\:]\s*/i, '').trim();
+                    let optC = "C. " + match[4].replace(/^C[\.\)\:]\s*/i, '').trim();
+                    let optDText = match[5].trim();
+                    
+                    optDText = optDText.replace(/\s*(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|E\s*[:\.]|Giải\s*thích\s*[:\.]).*/i, '').trim();
+                    let optD = "D. " + optDText.replace(/^D[\.\)\:]\s*/i, '').trim();
+
+                    let ansChar = match[6] ? match[6].toUpperCase() : 'A';
+                    let correctIdx = ansChar.charCodeAt(0) - 65;
+                    if (correctIdx < 0 || correctIdx > 3) correctIdx = 0;
+
+                    let expText = match[7] ? match[7].trim() : "";
+
+                    if (qText && match[2] && match[3]) {
+                        questions.push({
+                            id: questions.length + 1,
+                            questionText: qText,
+                            options: [optA, optB, optC, optD],
+                            correctAnswer: correctIdx,
+                            explanation: expText
+                        });
+                    }
+                }
+            });
+
+            if (questions.length === 0) {
+                let fallbackMatches = rawText.matchAll(/(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?)\s*(.*?)\s*A[\.\)\:]\s*(.*?)\s*B[\.\)\:]\s*(.*?)\s*C[\.\)\:]\s*(.*?)\s*D[\.\)\:]\s*(.*?)\s*A\s*[:\.]\s*([A-D])\s*(?:E\s*[:\.]\s*(.*?))?(?=(?:Q\s*[:\.]|Câu\s*\d+[\.:]|$))/gi);
+                for (let m of fallbackMatches) {
+                    let ansChar = m[6].toUpperCase();
+                    questions.push({
+                        id: questions.length + 1,
+                        questionText: m[1].trim(),
+                        options: ["A. " + m[2].trim(), "B. " + m[3].trim(), "C. " + m[4].trim(), "D. " + m[5].trim()],
+                        correctAnswer: ansChar.charCodeAt(0) - 65,
+                        explanation: m[7] ? m[7].trim() : ""
+                    });
+                }
+            }
+
+            return questions;
+        }
+
+        function deleteExam(sIdx, cIdx, eIdx) {
+            if (confirm('Xóa bài học này?')) {
+                appData.subjects[sIdx].chapters[cIdx].exams.splice(eIdx, 1);
+                saveAppDataToCloud();
+                renderHome();
+            }
         }
 
         function startExam(sIdx, cIdx, eIdx) {
             currentExamRef = { sIdx, cIdx, eIdx };
-            let exam = appData.subjects[sIdx].chapters[cIdx].exams[eIdx];
-            currentExam = JSON.parse(JSON.stringify(exam));
-            
+            currentExam = JSON.parse(JSON.stringify(appData.subjects[sIdx].chapters[cIdx].exams[eIdx]));
             document.getElementById('exam-title-header').innerText = currentExam.title;
             document.getElementById('exam-badge-subject').innerText = appData.subjects[sIdx].name;
 
-            activeQuestions = [...currentExam.questions];
+            activeQuestions = JSON.parse(JSON.stringify(currentExam.questions));
             if (settings.shuffleQ) activeQuestions.sort(() => Math.random() - 0.5);
+            if (settings.shuffleA) {
+                activeQuestions.forEach(q => {
+                    let pairs = q.options.map((opt, idx) => ({ opt, isCorrect: idx === q.correctAnswer }));
+                    pairs.sort(() => Math.random() - 0.5);
+                    q.options = pairs.map(p => p.opt);
+                    q.correctAnswer = pairs.findIndex(p => p.isCorrect);
+                });
+            }
 
             currentQuestionIndex = 0;
             userAnswers = {};
             unsureQuestions = {};
-
             switchTab('exam');
             renderQuestion();
             renderPalette();
@@ -967,288 +1065,251 @@
         }
 
         function renderQuestion() {
-            let container = document.getElementById('question-container');
-            if (!activeQuestions || activeQuestions.length === 0) {
-                container.innerHTML = `<p class="text-center text-slate-400 py-10">Bài thi chưa có câu hỏi nào.</p>`;
-                return;
-            }
-
-            let q = activeQuestions[currentQuestionIndex];
-            let answered = userAnswers[currentQuestionIndex] !== undefined;
-            let userAns = userAnswers[currentQuestionIndex];
+            const container = document.getElementById('question-container');
+            const q = activeQuestions[currentQuestionIndex];
+            const selectedAns = userAnswers[currentQuestionIndex];
+            const isAnswered = selectedAns !== undefined;
             let isAdmin = currentUser && currentUser.role === 'admin';
 
-            let optionsHtml = '';
-            ['A', 'B', 'C', 'D'].forEach((label, idx) => {
-                let optText = q.options[idx] || '';
-                let isChosen = userAns === idx;
-                let isCorrect = q.correct === idx;
-
-                let btnStyle = "border-slate-200 hover:border-red-300 hover:bg-red-50/20";
-                if (answered && settings.showAnswer) {
-                    if (isCorrect) btnStyle = "border-emerald-500 bg-emerald-50/50 text-emerald-900 font-semibold";
-                    else if (isChosen) btnStyle = "border-rose-500 bg-rose-50/50 text-rose-900 font-semibold";
-                } else if (isChosen) {
-                    btnStyle = "border-red-600 bg-red-50 text-red-900 font-semibold";
-                }
-
-                optionsHtml += `
-                    <button onclick="selectAnswer(${idx})" class="w-full text-left p-4 rounded-xl border-2 transition flex items-start space-x-3 ${btnStyle}">
-                        <span class="w-7 h-7 rounded-lg border flex items-center justify-center font-bold text-xs shrink-0 ${isChosen ? 'bg-red-700 text-white border-red-700' : 'bg-white text-slate-600'}">${label}</span>
-                        <span class="text-sm pt-0.5 leading-relaxed">${optText}</span>
-                    </button>
-                `;
-            });
-
-            container.innerHTML = `
+            let html = `
                 <div class="flex justify-between items-start">
-                    <span class="bg-red-100 text-red-800 text-xs font-bold px-3 py-1 rounded-full">Câu ${currentQuestionIndex + 1}/${activeQuestions.length}</span>
-                    ${isAdmin ? `<button onclick="openEditQuestionModal()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1 rounded-lg font-medium"><i class="fa-solid fa-pen mr-1"></i> Sửa câu hỏi</button>` : ''}
-                </div>
-                <p class="font-semibold text-slate-900 text-base md:text-lg leading-relaxed">${q.question}</p>
-                <div class="space-y-3 pt-2">${optionsHtml}</div>
-                ${(answered && settings.showAnswer && q.explanation) ? `
-                    <div class="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-1">
-                        <p class="text-xs font-bold text-amber-800"><i class="fa-solid fa-lightbulb mr-1"></i> Giải thích chi tiết:</p>
-                        <p class="text-xs text-amber-900 leading-relaxed">${q.explanation}</p>
+                    <span class="bg-red-50 text-red-700 font-semibold px-3 py-1 rounded-lg text-sm border border-red-100">Câu ${currentQuestionIndex + 1} / ${activeQuestions.length}</span>
+                    <div class="flex items-center space-x-2">
+                        ${isAdmin ? `<button onclick="openEditQuestionModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-2.5 py-1 rounded-lg font-medium transition flex items-center"><i class="fa-solid fa-pen-to-square mr-1.5 text-red-600"></i> Sửa câu hỏi</button>` : ''}
+                        ${unsureQuestions[currentQuestionIndex] ? '<span class="bg-amber-100 text-amber-800 text-xs px-2.5 py-1 rounded-full font-bold">Phân vân</span>' : ''}
                     </div>
-                ` : ''}
+                </div>
+                <h4 class="text-slate-900 font-bold text-lg leading-relaxed">${q.questionText}</h4>
+                <div class="space-y-3 pt-2">
             `;
-        }
 
-        async function selectAnswer(optIdx) {
-            userAnswers[currentQuestionIndex] = optIdx;
-            let q = activeQuestions[currentQuestionIndex];
-            
-            // Xử lý Sổ tay câu sai
-            if (optIdx !== q.correct) {
-                let exists = userPersonalData.mistakes.some(m => m.question === q.question);
-                if (!exists) {
-                    userPersonalData.mistakes.push(q);
+            q.options.forEach((opt, idx) => {
+                let btnStyle = "border-slate-200 hover:border-red-300 hover:bg-slate-50 text-slate-700";
+                let iconHtml = '';
+                if (isAnswered) {
+                    if (settings.showAnswer) {
+                        if (idx === q.correctAnswer) { btnStyle = "bg-emerald-50 border-emerald-500 text-emerald-900 font-medium"; iconHtml = '<i class="fa-solid fa-circle-check text-emerald-600 ml-auto"></i>'; }
+                        else if (idx === selectedAns) { btnStyle = "bg-rose-50 border-rose-500 text-rose-900 font-medium"; iconHtml = '<i class="fa-solid fa-circle-xmark text-rose-600 ml-auto"></i>'; }
+                    } else if (idx === selectedAns) { btnStyle = "bg-red-50 border-red-600 text-red-900 font-medium"; }
                 }
-            } else {
-                userPersonalData.mistakes = userPersonalData.mistakes.filter(m => m.question !== q.question);
-            }
+                html += `<button onclick="selectAnswer(${idx})" class="w-full text-left p-4 rounded-xl border-2 transition flex items-center justify-between text-sm md:text-base ${btnStyle}"><span>${opt}</span>${iconHtml}</button>`;
+            });
+            html += `</div>`;
 
-            // Xử lý Habit Tracker
-            let today = new Date().toISOString().split('T')[0];
-            userPersonalData.habits[today] = (userPersonalData.habits[today] || 0) + 1;
-
-            await saveUserPersonalData();
-
-            renderQuestion();
-            renderPalette();
-            updateStats();
-
-            if (settings.autoNext && currentQuestionIndex < activeQuestions.length - 1) {
-                setTimeout(() => { nextQuestion(); }, 400);
-            }
-        }
-
-        function nextQuestion() { if (currentQuestionIndex < activeQuestions.length - 1) { currentQuestionIndex++; renderQuestion(); renderPalette(); } }
-        function prevQuestion() { if (currentQuestionIndex > 0) { currentQuestionIndex--; renderQuestion(); renderPalette(); } }
-        function markUnsure() { unsureQuestions[currentQuestionIndex] = !unsureQuestions[currentQuestionIndex]; renderPalette(); }
-
-        function renderPalette() {
-            let palette = document.getElementById('question-palette');
-            let html = '';
-            activeQuestions.forEach((_, idx) => {
-                let answered = userAnswers[idx] !== undefined;
-                let isUnsure = unsureQuestions[idx];
-                let isCurrent = idx === currentQuestionIndex;
-
-                let bg = "bg-slate-100 text-slate-600";
-                if (answered) bg = "bg-red-600 text-white";
-                if (isUnsure) bg = "bg-amber-500 text-white";
-
+            if (isAnswered && settings.showAnswer && q.explanation && q.explanation.trim() !== "") {
                 html += `
-                    <button onclick="currentQuestionIndex=${idx}; renderQuestion(); renderPalette();" class="h-9 rounded-lg font-semibold text-xs transition flex items-center justify-center ${bg} ${isCurrent ? 'ring-2 ring-slate-900 ring-offset-1' : ''}">${idx + 1}</button>
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 text-sm space-y-1">
+                        <span class="font-bold text-slate-900 block"><i class="fa-solid fa-circle-info text-blue-600 mr-1"></i> Giải thích chi tiết:</span>
+                        <p class="text-slate-600">${q.explanation}</p>
+                    </div>
                 `;
-            });
-            palette.innerHTML = html;
+            }
+            container.innerHTML = html;
         }
 
-        function updateStats() {
-            let total = activeQuestions.length;
-            let completed = Object.keys(userAnswers).length;
-            let correct = 0;
-
-            Object.keys(userAnswers).forEach(idx => {
-                if (userAnswers[idx] === activeQuestions[idx].correct) correct++;
-            });
-
-            let score = total > 0 ? ((correct / total) * 10).toFixed(2) : "0.00";
-
-            document.getElementById('stat-completed').innerText = `${completed}/${total}`;
-            document.getElementById('stat-correct').innerText = correct;
-            document.getElementById('stat-score').innerText = score;
-        }
-
-        /* --- SỬA CÂU HỎI TRỰC TIẾP (ADMIN) --- */
         function openEditQuestionModal() {
-            let q = activeQuestions[currentQuestionIndex];
-            document.getElementById('edit-q-text').value = q.question;
+            if (!currentUser || currentUser.role !== 'admin') return;
+            const q = activeQuestions[currentQuestionIndex];
+            document.getElementById('edit-q-text').value = q.questionText;
             document.getElementById('edit-opt-0').value = q.options[0] || '';
             document.getElementById('edit-opt-1').value = q.options[1] || '';
             document.getElementById('edit-opt-2').value = q.options[2] || '';
             document.getElementById('edit-opt-3').value = q.options[3] || '';
-            document.getElementById('edit-correct-ans').value = q.correct;
+            document.getElementById('edit-correct-ans').value = q.correctAnswer || 0;
             document.getElementById('edit-explanation').value = q.explanation || '';
-
             document.getElementById('modal-edit-question').classList.remove('hidden');
         }
 
         function closeEditQuestionModal() { document.getElementById('modal-edit-question').classList.add('hidden'); }
 
-        async function saveEditedQuestion() {
+        function saveEditedQuestion() {
             let q = activeQuestions[currentQuestionIndex];
-            q.question = document.getElementById('edit-q-text').value.trim();
-            q.options[0] = document.getElementById('edit-opt-0').value.trim();
-            q.options[1] = document.getElementById('edit-opt-1').value.trim();
-            q.options[2] = document.getElementById('edit-opt-2').value.trim();
-            q.options[3] = document.getElementById('edit-opt-3').value.trim();
-            q.correct = parseInt(document.getElementById('edit-correct-ans').value);
+            q.questionText = document.getElementById('edit-q-text').value.trim();
+            q.options = [
+                document.getElementById('edit-opt-0').value.trim(),
+                document.getElementById('edit-opt-1').value.trim(),
+                document.getElementById('edit-opt-2').value.trim(),
+                document.getElementById('edit-opt-3').value.trim()
+            ].filter(o => o);
+            q.correctAnswer = parseInt(document.getElementById('edit-correct-ans').value);
             q.explanation = document.getElementById('edit-explanation').value.trim();
 
             let { sIdx, cIdx, eIdx } = currentExamRef;
-            if (sIdx !== null && appData.subjects[sIdx]) {
-                appData.subjects[sIdx].chapters[cIdx].exams[eIdx].questions[currentQuestionIndex] = JSON.parse(JSON.stringify(q));
-                await saveAppData();
+            if (sIdx !== null && cIdx !== null && eIdx !== null) {
+                let examObj = appData.subjects[sIdx].chapters[cIdx].exams[eIdx];
+                let originalQ = examObj.questions.find(item => item.id === q.id) || examObj.questions[currentQuestionIndex];
+                if (originalQ) {
+                    originalQ.questionText = q.questionText;
+                    originalQ.options = q.options;
+                    originalQ.correctAnswer = q.correctAnswer;
+                    originalQ.explanation = q.explanation;
+                }
+                saveAppDataToCloud();
             }
 
-            renderQuestion();
             closeEditQuestionModal();
+            renderQuestion();
+            renderPalette();
+            alert('Đã cập nhật câu hỏi thành công!');
         }
 
-        /* --- TÙY CHỈNH BÀI THI --- */
+        function selectAnswer(optIdx) {
+            if (userAnswers[currentQuestionIndex] !== undefined) return;
+            userAnswers[currentQuestionIndex] = optIdx;
+            let q = activeQuestions[currentQuestionIndex];
+            
+            if (optIdx !== q.correctAnswer) {
+                if (!userPersonalData.mistakes.some(m => m.questionText === q.questionText)) {
+                    userPersonalData.mistakes.push({ ...q, dateAdded: new Date().toISOString() });
+                    saveUserPersonalData();
+                }
+            }
+            recordHabitToday();
+            
+            renderQuestion();
+            renderPalette();
+            updateStats();
+
+            if (settings.autoNext && currentQuestionIndex < activeQuestions.length - 1) {
+                setTimeout(() => nextQuestion(), 400);
+            }
+        }
+
+        function nextQuestion() { if (currentQuestionIndex < activeQuestions.length - 1) { currentQuestionIndex++; renderQuestion(); renderPalette(); } }
+        function prevQuestion() { if (currentQuestionIndex > 0) { currentQuestionIndex--; renderQuestion(); renderPalette(); } }
+        function goToQuestion(idx) { currentQuestionIndex = idx; renderQuestion(); renderPalette(); }
+        function markUnsure() { unsureQuestions[currentQuestionIndex] = !unsureQuestions[currentQuestionIndex]; renderQuestion(); renderPalette(); }
+
+        function renderPalette() {
+            const palette = document.getElementById('question-palette');
+            let html = '';
+            activeQuestions.forEach((_, idx) => {
+                let bg = "bg-slate-100 text-slate-700 hover:bg-slate-200";
+                if (userAnswers[idx] !== undefined) {
+                    bg = (userAnswers[idx] === activeQuestions[idx].correctAnswer) ? "bg-emerald-600 text-white" : "bg-rose-600 text-white";
+                }
+                if (unsureQuestions[idx]) bg = "bg-amber-500 text-white";
+                if (idx === currentQuestionIndex) bg += " ring-2 ring-slate-900";
+                html += `<button onclick="goToQuestion(${idx})" class="h-9 rounded-lg font-bold text-xs transition ${bg}">${idx + 1}</button>`;
+            });
+            palette.innerHTML = html;
+        }
+
+        function updateStats() {
+            let completed = Object.keys(userAnswers).length;
+            let correct = 0;
+            Object.keys(userAnswers).forEach(idx => { if (userAnswers[idx] === activeQuestions[idx].correctAnswer) correct++; });
+            let score = activeQuestions.length > 0 ? (correct / activeQuestions.length) * 10 : 0;
+            document.getElementById('stat-completed').innerText = `${completed}/${activeQuestions.length}`;
+            document.getElementById('stat-correct').innerText = correct;
+            document.getElementById('stat-score').innerText = score.toFixed(2);
+        }
+
         function toggleSettingShowAnswer(el) { settings.showAnswer = el.checked; renderQuestion(); }
         function toggleSettingAutoNext(el) { settings.autoNext = el.checked; }
         function toggleShuffleQuestions(el) { settings.shuffleQ = el.checked; }
         function toggleShuffleAnswers(el) { settings.shuffleA = el.checked; }
 
-        /* --- SỔ TAY CÂU SAI & HABIT TRACKER --- */
-        function updateMistakesBadge() {
-            let count = userPersonalData.mistakes ? userPersonalData.mistakes.length : 0;
-            let badge = document.getElementById('badge-mistakes');
-            if (count > 0) {
-                badge.innerText = count;
+        function updateMistakeBadge() {
+            const badge = document.getElementById('badge-mistakes');
+            let mistakes = userPersonalData.mistakes || [];
+            if (mistakes.length > 0) {
+                badge.innerText = mistakes.length;
                 badge.classList.remove('hidden');
-            } else {
-                badge.classList.add('hidden');
-            }
+            } else { badge.classList.add('hidden'); }
         }
 
         function renderMistakes() {
-            updateMistakesBadge();
-            let container = document.getElementById('mistakes-container');
-            if (!userPersonalData.mistakes || userPersonalData.mistakes.length === 0) {
-                container.innerHTML = `<p class="text-center text-slate-400 py-10">Bạn chưa có câu sai nào trong sổ tay!</p>`;
+            const container = document.getElementById('mistakes-container');
+            let mistakes = userPersonalData.mistakes || [];
+            if (mistakes.length === 0) {
+                container.innerHTML = `<div class="bg-white p-8 rounded-2xl text-center text-slate-400">Chưa có câu sai nào cần ôn tập.</div>`;
+                document.getElementById('btn-review-mistakes').classList.add('hidden');
                 return;
             }
-
+            document.getElementById('btn-review-mistakes').classList.remove('hidden');
             let html = '';
-            userPersonalData.mistakes.forEach((m, idx) => {
-                html += `
-                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3">
-                        <div class="flex justify-between items-start">
-                            <h4 class="font-bold text-slate-800 text-sm">Câu ${idx + 1}: ${m.question}</h4>
-                            <button onclick="removeMistake(${idx})" class="text-xs text-rose-600 hover:underline"><i class="fa-solid fa-trash mr-1"></i> Xóa</button>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                            ${m.options.map((opt, oIdx) => `
-                                <div class="p-2.5 rounded-lg border ${oIdx === m.correct ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-semibold' : 'border-slate-100 bg-slate-50 text-slate-600'}">
-                                    ${['A','B','C','D'][oIdx]}.${opt}
-                                </div>
-                            `).join('')}
-                        </div>
-                        ${m.explanation ? `<p class="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-lg border border-amber-100"><i class="fa-solid fa-lightbulb mr-1"></i> ${m.explanation}</p>` : ''}
-                    </div>
-                `;
+            mistakes.forEach((m, idx) => {
+                html += `<div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-3"><div class="flex justify-between items-start"><span class="bg-amber-50 text-amber-800 font-semibold px-3 py-1 rounded-lg text-xs border">Câu sai #${idx + 1}</span><button onclick="removeMistake(${idx})" class="text-slate-400 hover:text-red-600 text-xs">Đã thuộc (Xóa)</button></div><h4 class="font-bold text-slate-900">${m.questionText}</h4><div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">`;
+                m.options.forEach((opt, oIdx) => {
+                    let isRight = oIdx === m.correctAnswer;
+                    html += `<div class="p-2.5 rounded-xl border ${isRight ? "bg-emerald-50 border-emerald-500 text-emerald-900 font-medium" : "bg-slate-50 border-slate-200 text-slate-600"}">${opt}</div>`;
+                });
+                html += `</div></div>`;
             });
             container.innerHTML = html;
         }
 
-        async function removeMistake(idx) {
+        function removeMistake(idx) {
             userPersonalData.mistakes.splice(idx, 1);
-            await saveUserPersonalData();
+            saveUserPersonalData();
             renderMistakes();
         }
 
         function startMistakeReview() {
-            if (!userPersonalData.mistakes || userPersonalData.mistakes.length === 0) {
-                alert("Sổ tay câu sai đang trống!");
-                return;
-            }
-            activeQuestions = [...userPersonalData.mistakes];
-            currentExamRef = { sIdx: null, cIdx: null, eIdx: null };
-            document.getElementById('exam-title-header').innerText = "Ôn Tập Sổ Tay Câu Sai";
-            document.getElementById('exam-badge-subject').innerText = "Sổ Tay Cá Nhân";
-
-            currentQuestionIndex = 0;
-            userAnswers = {};
-            unsureQuestions = {};
-
+            let mistakes = userPersonalData.mistakes || [];
+            if (mistakes.length === 0) return;
+            currentExam = { title: "Ôn tập câu sai", questions: JSON.parse(JSON.stringify(mistakes)) };
+            document.getElementById('exam-title-header').innerText = currentExam.title;
+            document.getElementById('exam-badge-subject').innerText = "Sổ tay câu sai";
+            activeQuestions = JSON.parse(JSON.stringify(currentExam.questions));
+            currentQuestionIndex = 0; userAnswers = {}; unsureQuestions = {};
             switchTab('exam');
-            renderQuestion();
-            renderPalette();
-            updateStats();
+            renderQuestion(); renderPalette(); updateStats();
+        }
+
+        function recordHabitToday() {
+            let todayStr = new Date().toISOString().split('T')[0];
+            if (!userPersonalData.habits) userPersonalData.habits = {};
+            userPersonalData.habits[todayStr] = true;
+            saveUserPersonalData();
         }
 
         function renderHabitTracker() {
-            let grid = document.getElementById('habit-grid');
-            let habits = userPersonalData.habits || {};
-            
-            let today = new Date();
-            let html = '';
-            let streak = 0;
-
-            for (let i = 27; i >= 0; i--) {
-                let d = new Date();
-                d.setDate(today.getDate() - i);
-                let dateStr = d.toISOString().split('T')[0];
-                let count = habits[dateStr] || 0;
-
-                if (count > 0) streak++;
-
-                html += `
-                    <div class="p-3 rounded-xl border text-center space-y-1 ${count > 0 ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-100'}">
-                        <p class="text-[10px] text-slate-400 font-medium">${d.getDate()}/${d.getMonth()+1}</p>
-                        <p class="font-bold text-sm ${count > 0 ? 'text-red-700' : 'text-slate-300'}">${count > 0 ? `<i class="fa-solid fa-fire text-amber-500"></i> ${count}` : '-'}</p>
-                    </div>
-                `;
+            const grid = document.getElementById('habit-grid');
+            if (!grid) return;
+            let html = '', streak = 0, today = new Date();
+            let dates = [];
+            for (let i = 6; i >= 0; i--) {
+                let d = new Date(); d.setDate(today.getDate() - i); dates.push(d);
             }
-
-            document.getElementById('streak-count').innerText = streak;
+            dates.forEach(d => {
+                let dateStr = d.toISOString().split('T')[0];
+                let isChecked = userPersonalData.habits && userPersonalData.habits[dateStr];
+                let dayName = d.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' });
+                if (isChecked) streak++;
+                html += `<div class="bg-slate-50 p-4 rounded-2xl border ${isChecked ? 'border-emerald-500 bg-emerald-50/50' : 'border-slate-200'} text-center space-y-2"><div class="text-xs font-semibold text-slate-500">${dayName}</div><div class="text-xl ${isChecked ? 'text-emerald-600' : 'text-slate-300'}"><i class="fa-solid ${isChecked ? 'fa-circle-check' : 'fa-circle'}"></i></div><div class="text-[10px] ${isChecked ? 'text-emerald-700 font-bold' : 'text-slate-400'}">${isChecked ? 'Đã học' : 'Chưa học'}</div></div>`;
+            });
             grid.innerHTML = html;
+            document.getElementById('streak-count').innerText = streak;
         }
 
-        /* --- XUẤT / NHẬP JSON DỮ LIỆU BACKUP --- */
         function exportBackup() {
+            if (!currentUser || currentUser.role !== 'admin') return alert('Bạn không có quyền thực hiện thao tác này!');
             let dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appData, null, 2));
-            let downloadAnchor = document.createElement('a');
-            downloadAnchor.setAttribute("href", dataStr);
-            downloadAnchor.setAttribute("download", `VMU_Backup_${new Date().toISOString().split('T')[0]}.json`);
-            document.body.appendChild(downloadAnchor);
-            downloadAnchor.click();
-            downloadAnchor.remove();
+            let dlAnchor = document.createElement('a');
+            dlAnchor.setAttribute("href", dataStr);
+            dlAnchor.setAttribute("download", "vmu_exam_backup.json");
+            document.body.appendChild(dlAnchor);
+            dlAnchor.click();
+            dlAnchor.remove();
         }
 
-        function importBackup(e) {
-            let file = e.target.files[0];
+        function importBackup(event) {
+            if (!currentUser || currentUser.role !== 'admin') return alert('Bạn không có quyền thực hiện thao tác này!');
+            let file = event.target.files[0];
             if (!file) return;
             let reader = new FileReader();
-            reader.onload = async function(evt) {
+            reader.onload = function(e) {
                 try {
-                    let parsed = JSON.parse(evt.target.result);
-                    if (parsed.subjects) {
-                        appData = parsed;
-                        await saveAppData();
-                        renderSubjects();
-                        alert("Đã nhập dữ liệu JSON thành công!");
-                    }
-                } catch(err) {
-                    alert("File JSON không đúng định dạng!");
-                }
+                    let imported = JSON.parse(e.target.result);
+                    if (imported && imported.subjects) {
+                        appData = imported;
+                        saveAppDataToCloud();
+                        renderHome();
+                        alert('Nhập dữ liệu thành công!');
+                    } else { alert('File JSON không hợp lệ!'); }
+                } catch (err) { alert('Lỗi đọc file!'); }
             };
             reader.readAsText(file);
         }
