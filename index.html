@@ -14,7 +14,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { 
-            getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, updateDoc, onSnapshot 
+            getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, updateDoc, onSnapshot, runTransaction 
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -39,6 +39,7 @@
         window.firebaseDeleteDoc = deleteDoc;
         window.firebaseUpdateDoc = updateDoc;
         window.firebaseOnSnapshot = onSnapshot;
+        window.firebaseRunTransaction = runTransaction;
 
         window.addEventListener('DOMContentLoaded', () => {
             if (typeof window.initAppSession === 'function') {
@@ -522,15 +523,23 @@
         }
 
         // ============================================================
-        // FIREBASE SYNC V3
-        // Chống mất dữ liệu do snapshot Cloud cũ ghi đè dữ liệu local.
+        // FIREBASE SYNC V4
+        // Đồng bộ an toàn theo 3-way merge + Firestore transaction.
         //
-        // Quy tắc:
-        // 1. Mỗi thay đổi local có timestamp riêng.
-        // 2. Nếu local mới hơn Cloud -> upload local.
-        // 3. Chỉ nhận Cloud khi Cloud mới hơn local.
-        // 4. Backup local được tách theo username.
-        // 5. Firebase lỗi/offline không được reset appData.
+        // Vấn đề của V3:
+        // - setDoc() ghi đè TOÀN BỘ users/my_data.
+        // - Timestamp chỉ giúp biết bản nào mới hơn, KHÔNG ngăn
+        //   một client đang giữ dữ liệu cũ ghi đè dữ liệu mới.
+        //
+        // V4:
+        // - Firebase vẫn là source of truth.
+        // - localStorage chỉ là cache/offline backup.
+        // - Mỗi subject/chapter/exam/question có ID ổn định.
+        // - Khi cloud đã thay đổi từ sau lúc client đọc:
+        //   merge 3 chiều (BASE -> LOCAL -> CLOUD), chỉ áp dụng
+        //   thay đổi thật sự của LOCAL lên CLOUD.
+        // - Ghi bằng Firestore transaction để tránh lost update.
+        // - Firebase lỗi KHÔNG reset appData.
         // ============================================================
 
         let isAppDataLoadedFromCloud = false;
@@ -539,6 +548,10 @@
         let syncTimeout = null;
         let localAppDataUpdatedAt = 0;
         let lastUploadedAppDataUpdatedAt = 0;
+
+        // Snapshot cloud gần nhất mà LOCAL đang dựa trên.
+        let baseAppData = null;
+        let baseCloudUpdatedAt = 0;
 
         function cloneAppData(data) {
             try {
@@ -567,16 +580,87 @@
             return "vmu_local_exam_backup_" + username;
         }
 
+        // ------------------------------------------------------------
+        // Tạo ID ổn định cho dữ liệu cũ.
+        // Không đổi ID đã tồn tại.
+        // ------------------------------------------------------------
+        function ensureStableIds(data) {
+            if (!data || !Array.isArray(data.subjects)) {
+                return { subjects: [] };
+            }
+
+            data.subjects.forEach((subject, sIdx) => {
+                if (!subject.id) {
+                    subject.id = "sub_" + Date.now() + "_" + sIdx + "_" + Math.random().toString(36).slice(2, 8);
+                }
+
+                if (!Array.isArray(subject.chapters)) {
+                    subject.chapters = [];
+                }
+
+                subject.chapters.forEach((chapter, cIdx) => {
+                    if (!chapter.id) {
+                        chapter.id = "chap_" + Date.now() + "_" + sIdx + "_" + cIdx + "_" + Math.random().toString(36).slice(2, 8);
+                    }
+
+                    if (!Array.isArray(chapter.exams)) {
+                        chapter.exams = [];
+                    }
+
+                    chapter.exams.forEach((exam, eIdx) => {
+                        if (!exam.id) {
+                            exam.id = "ex_" + Date.now() + "_" + sIdx + "_" + cIdx + "_" + eIdx + "_" + Math.random().toString(36).slice(2, 8);
+                        }
+
+                        if (!Array.isArray(exam.questions)) {
+                            exam.questions = [];
+                        }
+
+                        exam.questions.forEach((question, qIdx) => {
+                            if (
+                                question.id === undefined ||
+                                question.id === null ||
+                                question.id === ""
+                            ) {
+                                question.id = "q_" + Date.now() + "_" + sIdx + "_" + cIdx + "_" + eIdx + "_" + qIdx + "_" + Math.random().toString(36).slice(2, 8);
+                            } else {
+                                // ID số cũ vẫn được giữ nguyên vì nó ổn định
+                                // trong phạm vi một exam.
+                                question.id = String(question.id);
+                            }
+                        });
+                    });
+                });
+            });
+
+            return data;
+        }
+
+        function normalizeAppData(data) {
+            const normalized = cloneAppData(data);
+            ensureStableIds(normalized);
+            return normalized;
+        }
+
         function saveAppDataToLocal(updatedAt = localAppDataUpdatedAt) {
             try {
-                const data = cloneAppData(appData);
+                const data = normalizeAppData(appData);
+
+                // Lưu cả BASE để khi reload trang, client vẫn biết
+                // LOCAL đang dựa trên phiên bản CLOUD nào.
+                // Điều này rất quan trọng cho 3-way merge.
+                const payload = {
+                    updatedAt: Number(updatedAt) || Date.now(),
+                    baseCloudUpdatedAt: Number(baseCloudUpdatedAt) || 0,
+                    baseData: baseAppData
+                        ? normalizeAppData(baseAppData)
+                        : null,
+                    data: data
+                };
 
                 localStorage.setItem(
                     getAppDataLocalKey(),
-                    JSON.stringify({
-                        updatedAt: Number(updatedAt) || Date.now(),
-                        data: data
-                    })
+                    JSON.stringify(payload)
                 );
             } catch (e) {
                 console.error("[SYNC] Lỗi lưu backup local:", e);
@@ -597,8 +681,6 @@
 
                 const parsed = JSON.parse(raw);
 
-                // Format mới:
-                // { updatedAt, data }
                 if (
                     parsed &&
                     typeof parsed === "object" &&
@@ -608,10 +690,26 @@
                     localAppDataUpdatedAt =
                         Number(parsed.updatedAt) || 0;
 
+                    // Khôi phục BASE đã được lưu cùng local.
+                    if (
+                        parsed.baseData &&
+                        Array.isArray(parsed.baseData.subjects)
+                    ) {
+                        baseAppData = normalizeAppData(parsed.baseData);
+                        baseCloudUpdatedAt =
+                            Number(parsed.baseCloudUpdatedAt) || 0;
+                    } else {
+                        // Backup cũ chưa có BASE.
+                        // Dùng bản local làm BASE tạm thời để tránh
+                        // coi toàn bộ dữ liệu CLOUD là dữ liệu bị xóa.
+                        baseAppData = normalizeAppData(parsed.data);
+                        baseCloudUpdatedAt = 0;
+                    }
+
                     return {
                         exists: true,
                         updatedAt: localAppDataUpdatedAt,
-                        data: parsed.data
+                        data: normalizeAppData(parsed.data)
                     };
                 }
 
@@ -623,11 +721,13 @@
                     Array.isArray(parsed.subjects)
                 ) {
                     localAppDataUpdatedAt = 1;
+                    baseAppData = normalizeAppData(parsed);
+                    baseCloudUpdatedAt = 0;
 
                     return {
                         exists: true,
                         updatedAt: 1,
-                        data: parsed
+                        data: normalizeAppData(parsed)
                     };
                 }
 
@@ -663,11 +763,174 @@
 
             return {
                 updatedAt: cloudUpdatedAt,
-                data: data
+                data: normalizeAppData(data)
             };
         }
 
-        function startAppDataRealtimeSync() {
+        // ------------------------------------------------------------
+        // 3-WAY MERGE
+        //
+        // BASE = lần cuối client đã đọc từ Cloud
+        // LOCAL = dữ liệu client đang muốn lưu
+        // CLOUD = dữ liệu mới nhất đang nằm trên Firebase
+        //
+        // Chỉ thay đổi phần LOCAL thực sự sửa so với BASE.
+        // Vì vậy client A sửa Exam 1 sẽ không xóa Exam 2 mà
+        // client B vừa thêm.
+        // ------------------------------------------------------------
+
+        function mergeEntityCollection(baseArr, localArr, cloudArr, key, nestedMerge) {
+            baseArr = Array.isArray(baseArr) ? baseArr : [];
+            localArr = Array.isArray(localArr) ? localArr : [];
+            cloudArr = Array.isArray(cloudArr) ? cloudArr : [];
+
+            const baseMap = new Map(baseArr.map(x => [String(x[key]), x]));
+            const localMap = new Map(localArr.map(x => [String(x[key]), x]));
+            const cloudMap = new Map(cloudArr.map(x => [String(x[key]), x]));
+
+            const result = [];
+            const used = new Set();
+
+            // Giữ thứ tự LOCAL trước; phù hợp với giao diện hiện tại.
+            for (const localItem of localArr) {
+                const id = String(localItem[key]);
+                if (used.has(id)) continue;
+
+                const baseItem = baseMap.get(id);
+                const cloudItem = cloudMap.get(id);
+
+                if (!baseItem) {
+                    // Item mới do LOCAL tạo.
+                    result.push(cloneAppData(localItem));
+                } else if (!cloudItem) {
+                    // LOCAL vẫn giữ item mà CLOUD đã xóa.
+                    // Đây là xung đột rõ ràng -> thay đổi mới nhất
+                    // của LOCAL được ưu tiên.
+                    result.push(cloneAppData(localItem));
+                } else {
+                    const localChanged =
+                        getAppDataJSON(localItem) !== getAppDataJSON(baseItem);
+
+                    if (localChanged) {
+                        result.push(
+                            nestedMerge
+                                ? nestedMerge(baseItem, localItem, cloudItem)
+                                : cloneAppData(localItem)
+                        );
+                    } else {
+                        // LOCAL không đổi item này -> giữ phiên bản CLOUD.
+                        result.push(cloneAppData(cloudItem));
+                    }
+                }
+
+                used.add(id);
+            }
+
+            // Các item có trên CLOUD nhưng LOCAL không chứa.
+            // Nếu item có từ BASE và LOCAL đã xóa -> không thêm lại.
+            for (const cloudItem of cloudArr) {
+                const id = String(cloudItem[key]);
+                if (used.has(id)) continue;
+
+                const baseItem = baseMap.get(id);
+
+                if (!baseItem) {
+                    // CLOUD tự thêm item mới -> giữ lại.
+                    result.push(cloneAppData(cloudItem));
+                } else {
+                    // BASE có + LOCAL xóa => LOCAL deletion thắng.
+                }
+
+                used.add(id);
+            }
+
+            return result;
+        }
+
+        function mergeQuestion(baseQ, localQ, cloudQ) {
+            // Question không có collection con.
+            const localChanged =
+                getAppDataJSON(localQ) !== getAppDataJSON(baseQ);
+
+            return localChanged
+                ? cloneAppData(localQ)
+                : cloneAppData(cloudQ);
+        }
+
+        function mergeExam(baseExam, localExam, cloudExam) {
+            const merged = cloneAppData(cloudExam);
+
+            merged.title = localExam.title;
+
+            merged.questions = mergeEntityCollection(
+                baseExam.questions,
+                localExam.questions,
+                cloudExam.questions,
+                "id",
+                mergeQuestion
+            );
+
+            return merged;
+        }
+
+        function mergeChapter(baseChapter, localChapter, cloudChapter) {
+            const merged = cloneAppData(cloudChapter);
+
+            merged.chapterName = localChapter.chapterName;
+
+            merged.exams = mergeEntityCollection(
+                baseChapter.exams,
+                localChapter.exams,
+                cloudChapter.exams,
+                "id",
+                mergeExam
+            );
+
+            return merged;
+        }
+
+        function mergeSubject(baseSubject, localSubject, cloudSubject) {
+            const merged = cloneAppData(cloudSubject);
+
+            merged.name = localSubject.name;
+
+            merged.chapters = mergeEntityCollection(
+                baseSubject.chapters,
+                localSubject.chapters,
+                cloudSubject.chapters,
+                "id",
+                mergeChapter
+            );
+
+            return merged;
+        }
+
+        function mergeAppDataThreeWay(base, local, cloud) {
+            base = normalizeAppData(base || { subjects: [] });
+            local = normalizeAppData(local || { subjects: [] });
+            cloud = normalizeAppData(cloud || { subjects: [] });
+
+            return {
+                subjects: mergeEntityCollection(
+                    base.subjects,
+                    local.subjects,
+                    cloud.subjects,
+                    "id",
+                    mergeSubject
+                )
+            };
+        }
+
+        function nextSyncVersion(...versions) {
+            const maxVersion = Math.max(
+                Date.now(),
+                ...versions.map(v => Number(v) || 0)
+            );
+
+            return maxVersion;
+        }
+
+        async function startAppDataRealtimeSync() {
 
             if (appDataUnsub) {
                 try {
@@ -681,6 +944,8 @@
             isAppDataSaving = false;
             pendingAppDataSave = false;
             lastUploadedAppDataUpdatedAt = 0;
+            baseAppData = null;
+            baseCloudUpdatedAt = 0;
 
             // --------------------------------------------------------
             // 1. Khôi phục local trước
@@ -688,7 +953,7 @@
             const local = loadAppDataFromLocal();
 
             if (local.exists && local.data) {
-                appData = cloneAppData(local.data);
+                appData = normalizeAppData(local.data);
 
                 console.log(
                     "[SYNC] Khôi phục local:",
@@ -706,7 +971,6 @@
             }
 
             try {
-
                 const docRef = window.firebaseDoc(
                     window.firebaseDB,
                     "users",
@@ -726,6 +990,14 @@
                             console.warn(
                                 "[SYNC] Cloud chưa có users/my_data."
                             );
+
+                            // Nếu local đã có BASE được khôi phục từ cache,
+                            // giữ nguyên BASE để lần upload đầu tiên không
+                            // biến toàn bộ dữ liệu CLOUD thành deletion.
+                            if (!baseAppData) {
+                                baseAppData = normalizeAppData({ subjects: [] });
+                                baseCloudUpdatedAt = 0;
+                            }
 
                             if (
                                 appData &&
@@ -747,8 +1019,6 @@
 
                             } else {
 
-                                // Chỉ tạo dữ liệu rỗng nếu thực sự
-                                // không có dữ liệu local.
                                 appData = {
                                     subjects: []
                                 };
@@ -775,12 +1045,20 @@
                             return;
                         }
 
-                        const cloudUpdatedAt =
-                            cloud.updatedAt;
-
+                        const cloudUpdatedAt = cloud.updatedAt;
                         const localUpdatedAt =
                             Number(localAppDataUpdatedAt) || 0;
 
+                        // QUAN TRỌNG:
+                        // Không được cập nhật BASE ở đây khi CLOUD chỉ vừa
+                        // thay đổi. BASE phải là phiên bản CLOUD mà LOCAL
+                        // thực sự đang dựa vào. Nếu cập nhật BASE ngay lúc
+                        // nhận snapshot mới, một item mới do thiết bị khác
+                        // thêm có thể bị hiểu nhầm là "LOCAL đã xóa item đó".
+                        //
+                        // BASE chỉ được cập nhật khi:
+                        // 1) LOCAL chấp nhận hẳn CLOUD, hoặc
+                        // 2) transaction đã commit thành công.
                         console.log(
                             "[SYNC] So sánh phiên bản:",
                             {
@@ -792,26 +1070,7 @@
                         );
 
                         // ------------------------------------------------
-                        // LOCAL MỚI HƠN CLOUD
-                        // => Cloud cũ, KHÔNG được ghi đè local.
-                        // ------------------------------------------------
-                        if (localUpdatedAt > cloudUpdatedAt) {
-
-                            console.log(
-                                "[SYNC] LOCAL MỚI HƠN CLOUD -> giữ local và upload."
-                            );
-
-                            if (!isAppDataSaving) {
-                                await forceSaveAppDataToCloud();
-                            }
-
-                            isAppDataLoadedFromCloud = true;
-                            return;
-                        }
-
-                        // ------------------------------------------------
-                        // CLOUD MỚI HƠN LOCAL
-                        // => nhận Cloud.
+                        // Nếu cloud mới hơn local -> nhận cloud.
                         // ------------------------------------------------
                         if (cloudUpdatedAt > localUpdatedAt) {
 
@@ -820,6 +1079,11 @@
                             );
 
                             appData = cloneAppData(cloud.data);
+
+                            // CLOUD đã được chấp nhận làm LOCAL mới.
+                            // Từ thời điểm này đây chính là BASE.
+                            baseAppData = cloneAppData(cloud.data);
+                            baseCloudUpdatedAt = cloudUpdatedAt;
 
                             localAppDataUpdatedAt =
                                 cloudUpdatedAt;
@@ -836,34 +1100,37 @@
                         }
 
                         // ------------------------------------------------
-                        // Cùng version.
-                        // Nếu dữ liệu giống nhau thì không làm gì.
+                        // Cloud cùng version và dữ liệu giống local.
+                        // Đây thường là snapshot sau chính write của client.
                         // ------------------------------------------------
-                        const cloudJSON =
-                            getAppDataJSON(cloud.data);
-
-                        const localJSON =
-                            getAppDataJSON(appData);
-
-                        if (cloudJSON === localJSON) {
+                        if (
+                            cloudUpdatedAt === localUpdatedAt &&
+                            getAppDataJSON(cloud.data) === getAppDataJSON(appData)
+                        ) {
+                            // Snapshot này chính là phiên bản LOCAL đã lưu.
+                            // Có thể xác nhận CLOUD là BASE an toàn.
+                            baseAppData = cloneAppData(cloud.data);
+                            baseCloudUpdatedAt = cloudUpdatedAt;
                             isAppDataLoadedFromCloud = true;
                             return;
                         }
 
-                        // Hai bên cùng timestamp nhưng khác dữ liệu.
-                        // Không tự ý xóa local; giữ local và upload lại.
-                        console.warn(
-                            "[SYNC] Cùng timestamp nhưng dữ liệu khác nhau -> giữ local."
-                        );
-
-                        if (!isAppDataSaving) {
-                            localAppDataUpdatedAt = Date.now();
-
-                            saveAppDataToLocal(
-                                localAppDataUpdatedAt
+                        // ------------------------------------------------
+                        // LOCAL mới hơn hoặc hai bên khác nhau:
+                        // KHÔNG được lấy Cloud đè LOCAL.
+                        // forceSave() sẽ dùng transaction + 3-way merge.
+                        // ------------------------------------------------
+                        if (
+                            cloudUpdatedAt < localUpdatedAt ||
+                            getAppDataJSON(cloud.data) !== getAppDataJSON(appData)
+                        ) {
+                            console.log(
+                                "[SYNC] Có khác biệt LOCAL/CLOUD -> merge an toàn."
                             );
 
-                            await forceSaveAppDataToCloud();
+                            if (!isAppDataSaving) {
+                                await forceSaveAppDataToCloud();
+                            }
                         }
 
                         isAppDataLoadedFromCloud = true;
@@ -875,8 +1142,8 @@
                             err
                         );
 
-                        // QUAN TRỌNG:
                         // Firebase lỗi KHÔNG được reset appData.
+                        renderHome();
                     }
                 );
 
@@ -916,19 +1183,34 @@
                 return false;
             }
 
-            // Nếu chưa có version thì tạo version.
+            if (!window.firebaseRunTransaction) {
+                console.error(
+                    "[SYNC] Firebase runTransaction chưa được khởi tạo."
+                );
+
+                saveAppDataToLocal(localAppDataUpdatedAt);
+                return false;
+            }
+
+            // Đảm bảo dữ liệu đang lưu có ID ổn định.
+            appData = normalizeAppData(appData);
+
             if (!localAppDataUpdatedAt) {
                 localAppDataUpdatedAt = Date.now();
             }
 
-            const dataToSave =
-                cloneAppData(appData);
+            const dataAtStart = cloneAppData(appData);
+            const versionAtStart = Number(localAppDataUpdatedAt) || Date.now();
 
-            const versionToSave =
-                Number(localAppDataUpdatedAt);
+            // Snapshot BASE tương ứng với lúc local được tạo/chỉnh sửa.
+            const baseAtStart = cloneAppData(
+                baseAppData || { subjects: [] }
+            );
 
-            // Lưu local TRƯỚC khi upload.
-            saveAppDataToLocal(versionToSave);
+            const baseVersionAtStart =
+                Number(baseCloudUpdatedAt) || 0;
+
+            saveAppDataToLocal(versionAtStart);
 
             isAppDataSaving = true;
 
@@ -940,22 +1222,95 @@
                     "my_data"
                 );
 
-                // Metadata __syncUpdatedAt nằm ngoài appData.
-                // Khi đọc lại sẽ được loại bỏ.
-                await window.firebaseSetDoc(
-                    docRef,
-                    {
-                        ...dataToSave,
-                        __syncUpdatedAt: versionToSave
+                let committedData = null;
+                let committedVersion = 0;
+
+                await window.firebaseRunTransaction(
+                    window.firebaseDB,
+                    async (transaction) => {
+
+                        const snap = await transaction.get(docRef);
+
+                        let cloudData = { subjects: [] };
+                        let cloudVersion = 0;
+
+                        if (snap.exists()) {
+                            const raw = snap.data() || {};
+
+                            cloudVersion =
+                                Number(raw.__syncUpdatedAt) || 0;
+
+                            if (Array.isArray(raw.subjects)) {
+                                const cleanRaw = { ...raw };
+                                delete cleanRaw.__syncUpdatedAt;
+                                cloudData = normalizeAppData(cleanRaw);
+                            }
+                        }
+
+                        // Nếu cloud vẫn đúng BASE mà client đang dựa vào,
+                        // không cần merge -> ghi LOCAL trực tiếp.
+                        let finalData;
+
+                        if (
+                            cloudVersion === baseVersionAtStart &&
+                            getAppDataJSON(cloudData) === getAppDataJSON(baseAtStart)
+                        ) {
+                            finalData = cloneAppData(dataAtStart);
+                        } else {
+                            // Cloud đã thay đổi -> 3-way merge.
+                            finalData = mergeAppDataThreeWay(
+                                baseAtStart,
+                                dataAtStart,
+                                cloudData
+                            );
+                        }
+
+                        const finalVersion = nextSyncVersion(
+                            versionAtStart,
+                            cloudVersion,
+                            baseVersionAtStart
+                        );
+
+                        transaction.set(
+                            docRef,
+                            {
+                                ...finalData,
+                                __syncUpdatedAt: finalVersion
+                            }
+                        );
+
+                        committedData = finalData;
+                        committedVersion = finalVersion;
                     }
                 );
 
-                lastUploadedAppDataUpdatedAt =
-                    versionToSave;
+                // Nếu upload trong lúc đó không có local edit mới,
+                // ta có thể coi kết quả transaction là local hiện tại.
+                if (Number(localAppDataUpdatedAt) === versionAtStart) {
+                    appData = normalizeAppData(committedData);
+                    localAppDataUpdatedAt = committedVersion;
+                } else {
+                    // Có edit mới xảy ra trong lúc transaction chạy.
+                    // Không được lấy snapshot cũ đè edit mới.
+                    // BASE được cập nhật để lần save tiếp theo merge
+                    // edit mới vào cloud vừa commit.
+                    baseAppData = normalizeAppData(committedData);
+                    baseCloudUpdatedAt = committedVersion;
+                }
+
+                // Sau transaction, BASE luôn là dữ liệu đã commit lên cloud.
+                baseAppData = normalizeAppData(committedData);
+                baseCloudUpdatedAt = committedVersion;
+
+                lastUploadedAppDataUpdatedAt = committedVersion;
+
+                saveAppDataToLocal(
+                    localAppDataUpdatedAt
+                );
 
                 console.log(
-                    "[SYNC] Upload thành công. Version:",
-                    versionToSave
+                    "[SYNC] Transaction upload thành công. Version:",
+                    committedVersion
                 );
 
                 return true;
@@ -963,12 +1318,14 @@
             } catch (e) {
 
                 console.error(
-                    "[SYNC] Upload Firebase thất bại:",
+                    "[SYNC] Transaction Firebase thất bại:",
                     e
                 );
 
                 // Dữ liệu local VẪN được giữ.
-                saveAppDataToLocal(versionToSave);
+                saveAppDataToLocal(
+                    localAppDataUpdatedAt
+                );
 
                 return false;
 
@@ -986,11 +1343,16 @@
                 return;
             }
 
-            // --------------------------------------------------------
-            // QUAN TRỌNG:
-            // Mỗi lần sửa dữ liệu -> tăng version local NGAY LẬP TỨC.
-            // --------------------------------------------------------
-            localAppDataUpdatedAt = Date.now();
+            appData = normalizeAppData(appData);
+
+            // Mỗi thay đổi local -> tạo version mới.
+            // +1 giúp tránh trường hợp hai thay đổi xảy ra trong
+            // cùng một millisecond.
+            localAppDataUpdatedAt =
+                Math.max(
+                    Date.now(),
+                    Number(localAppDataUpdatedAt) + 1
+                );
 
             saveAppDataToLocal(
                 localAppDataUpdatedAt
@@ -1019,7 +1381,13 @@
                     versionAtSchedule
                 ) {
                     pendingAppDataSave = true;
-                    saveAppDataToCloud();
+
+                    if (!syncTimeout) {
+                        syncTimeout = setTimeout(async () => {
+                            syncTimeout = null;
+                            await forceSaveAppDataToCloud();
+                        }, 100);
+                    }
                 } else {
                     pendingAppDataSave = false;
                 }
@@ -1114,7 +1482,7 @@
                 // setDoc không merge: document chỉ còn mistakes, field habits cũ bị xóa.
                 await window.firebaseSetDoc(docRef, {
                     mistakes: userPersonalData.mistakes
-                });
+                }, { merge: true });
 
                 if (!silent) console.log("[PERSONAL] Đã đồng bộ Firebase.");
                 updateMistakeBadge();
@@ -1806,10 +2174,18 @@ function extractNumber(name) {
                     return;
                 }
 
-                appData = imported;
+                // Chuẩn hóa ID trước khi merge/ghi Cloud.
+                appData = normalizeAppData(imported);
 
-                // Lưu local trước, sau đó upload thật lên Firebase.
-                saveAppDataToLocal();
+                // Import là thao tác thay đổi dữ liệu có chủ đích.
+                // Đặt version mới và để forceSave() dùng transaction +
+                // 3-way merge, tránh ghi đè dữ liệu Cloud vừa được cập nhật
+                // bởi một thiết bị khác.
+                localAppDataUpdatedAt = Math.max(
+                    Date.now(),
+                    Number(localAppDataUpdatedAt) + 1
+                );
+                saveAppDataToLocal(localAppDataUpdatedAt);
                 const success = await forceSaveAppDataToCloud();
 
                 renderHome();
