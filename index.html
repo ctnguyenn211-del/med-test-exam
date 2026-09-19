@@ -13,7 +13,7 @@
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCpbC9aaVJdLiscTP4D8dCqqvRn1tAalxg",
@@ -34,6 +34,7 @@
         window.firebaseGetDoc = getDoc;
         window.firebaseCollection = collection;
         window.firebaseGetDocs = getDocs;
+        window.firebaseDeleteDoc = deleteDoc;
 
         window.initAppSession();
     </script>
@@ -69,7 +70,8 @@
                     <button onclick="logoutAccount()" class="text-red-200 hover:text-white ml-2 text-xs underline">Đăng xuất</button>
                 </div>
 
-                <div class="relative group">
+                <!-- Menu Dữ liệu (Đã chặn user tải xuống, chỉ Admin mới thấy nút xuất dữ liệu) -->
+                <div class="relative group" id="admin-data-menu">
                     <button class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-red-800 transition"><i class="fa-solid fa-database mr-1"></i> Dữ liệu</button>
                     <div class="absolute right-0 mt-1 w-48 bg-white text-slate-700 rounded-lg shadow-xl py-2 hidden group-hover:block border border-slate-100 z-50">
                         <button onclick="exportBackup()" class="w-full text-left px-4 py-2 text-sm hover:bg-red-50 hover:text-red-700 flex items-center"><i class="fa-solid fa-download mr-2 text-red-600"></i> Xuất dữ liệu (JSON)</button>
@@ -306,7 +308,7 @@
         </div>
     </div>
 
-    <!-- Script xử lý logic -->
+    <!-- Script xử lý logic tối ưu hóa tốc độ -->
     <script>
         let appData = { subjects: [] };
         let userPersonalData = { mistakes: [], habits: {} };
@@ -321,6 +323,7 @@
         let collapsedSubjects = {};
         let collapsedChapters = {};
         let renameTarget = null;
+        let syncTimeout = null; // Biến debounce để đồng bộ ngầm mượt mà
 
         const ADMIN_PASSWORD = "212696";
 
@@ -345,15 +348,18 @@
             const icon = document.getElementById('user-role-icon');
             const usersBtn = document.getElementById('nav-users-btn');
             const adminBtns = document.getElementById('admin-action-buttons');
+            const adminDataMenu = document.getElementById('admin-data-menu');
 
             if (currentUser.role === 'admin') {
                 icon.className = "fa-solid fa-user-shield text-amber-300";
                 usersBtn.classList.remove('hidden');
                 adminBtns.classList.remove('hidden');
+                adminDataMenu.classList.remove('hidden'); // Hiển thị nút dữ liệu cho Admin
             } else {
                 icon.className = "fa-solid fa-user text-emerald-300";
                 usersBtn.classList.add('hidden');
                 adminBtns.classList.add('hidden');
+                adminDataMenu.classList.add('hidden'); // CHẶN HOÀN TOÀN menu dữ liệu (tải file xuống) đối với User thường
             }
         }
 
@@ -440,7 +446,7 @@
                     alert('Đăng ký thành công! Vui lòng chờ Admin phê duyệt.');
                 }
             } catch(e) {
-                alert('Lỗi kết nối Cloud! (Hãy nhớ cấu hình lại Rules trong Firebase Console thành allow read, write: if true;)');
+                alert('Lỗi kết nối Cloud!');
             }
         }
 
@@ -467,14 +473,14 @@
                         let u = docSnap.data();
                         let isPending = u.status === 'pending';
                         html += `
-                            <div class="bg-slate-50 p-4 rounded-xl border flex justify-between items-center">
+                            <div class="bg-slate-50 p-4 rounded-xl border flex justify-between items-center" id="user-row-${u.username}">
                                 <div>
                                     <h4 class="font-bold text-slate-800">${u.username}</h4>
-                                    <span class="text-xs px-2 py-0.5 rounded-full font-semibold ${isPending ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}">${isPending ? 'Chờ duyệt' : 'Đã duyệt'}</span>
+                                    <span class="text-xs px-2 py-0.5 rounded-full font-semibold ${isPending ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}" id="user-status-${u.username}">${isPending ? 'Chờ duyệt' : 'Đã duyệt'}</span>
                                 </div>
                                 <div class="space-x-2">
-                                    ${isPending ? `<button onclick="approveUser('${u.username}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold">Phê duyệt</button>` : ''}
-                                    <button onclick="deleteUser('${u.username}')" class="bg-rose-100 hover:bg-rose-200 text-rose-700 px-3 py-1.5 rounded-lg text-xs font-bold">Xóa</button>
+                                    ${isPending ? `<button onclick="approveUser('${u.username}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">Phê duyệt</button>` : ''}
+                                    <button onclick="deleteUser('${u.username}')" class="bg-rose-100 hover:bg-rose-200 text-rose-700 px-3 py-1.5 rounded-lg text-xs font-bold transition">Xóa</button>
                                 </div>
                             </div>
                         `;
@@ -488,21 +494,33 @@
 
         function closeUsersModal() { document.getElementById('modal-users').classList.add('hidden'); }
 
+        // Tối ưu tốc độ duyệt user: Phản hồi giao diện tức thì bằng DOM trực tiếp, đồng thời gửi lệnh ngầm lên Firebase
         async function approveUser(username) {
+            let statusEl = document.getElementById(`user-status-${username}`);
+            if (statusEl) {
+                statusEl.className = "text-xs px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800";
+                statusEl.innerText = "Đã duyệt";
+            }
+            let btnParent = statusEl ? statusEl.closest('.flex') : null;
+            if (btnParent) {
+                let approveBtn = btnParent.querySelector('button');
+                if (approveBtn) approveBtn.remove();
+            }
+
             try {
                 let docRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
-                await window.firebaseSetDoc(docRef, { status: 'approved' }, { merge: true });
-                alert(`Đã duyệt: ${username}`);
-                openUsersModal();
+                window.firebaseSetDoc(docRef, { status: 'approved' }, { merge: true });
             } catch(e) {}
         }
 
         async function deleteUser(username) {
             if (confirm(`Xóa user ${username}?`)) {
+                let rowEl = document.getElementById(`user-row-${username}`);
+                if (rowEl) rowEl.remove();
+
                 try {
                     let docRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
-                    await window.firebaseSetDoc(docRef, { status: 'deleted' }, { merge: true });
-                    openUsersModal();
+                    window.firebaseSetDoc(docRef, { status: 'deleted' }, { merge: true });
                 } catch(e) {}
             }
         }
@@ -513,7 +531,7 @@
             if (localData) {
                 try { 
                     appData = JSON.parse(localData); 
-                    renderHome(); // Hiển thị ngay lập tức 0 giây chờ đợi
+                    renderHome(); 
                 } catch(err) {}
             }
 
@@ -558,16 +576,21 @@
             renderHome();
         }
 
-        async function saveAppDataToCloud() {
+        // TỐI ƯU TỐC ĐỘ XÓA & THAO TÁC: Lưu LocalStorage ngay lập tức (0ms độ trễ) và dùng Debounce đẩy ngầm lên Firebase
+        function saveAppDataToCloud() {
             if (!currentUser || currentUser.role !== 'admin') return;
             let jsonStr = JSON.stringify(appData);
             localStorage.setItem("vmu_local_exam_backup", jsonStr);
-            try {
-                if (window.firebaseDB) {
-                    const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
-                    await window.firebaseSetDoc(docRef, appData);
-                }
-            } catch (e) {}
+
+            if (syncTimeout) clearTimeout(syncTimeout);
+            syncTimeout = setTimeout(async () => {
+                try {
+                    if (window.firebaseDB) {
+                        const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
+                        await window.firebaseSetDoc(docRef, appData);
+                    }
+                } catch (e) {}
+            }, 800); // Trì hoãn 800ms để gộp nhiều lệnh xóa liên tục thành 1 request duy nhất lên mây
         }
 
         async function loadUserPersonalData() {
@@ -590,13 +613,13 @@
             renderHabitTracker();
         }
 
-        async function saveUserPersonalData() {
+        function saveUserPersonalData() {
             let userKey = currentUser.username;
             localStorage.setItem("vmu_personal_" + userKey, JSON.stringify(userPersonalData));
             try {
                 if (window.firebaseDB) {
                     const docRef = window.firebaseDoc(window.firebaseDB, "users_data", userKey);
-                    await window.firebaseSetDoc(docRef, userPersonalData);
+                    window.firebaseSetDoc(docRef, userPersonalData);
                 }
             } catch(e) {}
             updateMistakeBadge();
@@ -707,7 +730,7 @@
                                             ${isAdmin ? `
                                             <div class="flex items-center space-x-1">
                                                 <button onclick="openRenameModal('exam', ${sIdx}, ${cIdx}, ${eIdx})" class="text-slate-400 hover:text-blue-600 p-1 text-xs" title="Sửa tên bài"><i class="fa-solid fa-pen"></i></button>
-                                                <button onclick="deleteExam('${sIdx}', '${cIdx}', '${eIdx}')" class="text-slate-400 hover:text-red-600 text-xs p-1" title="Xóa bài"><i class="fa-solid fa-trash"></i></button>
+                                                <button onclick="deleteExam('${sIdx}', ${cIdx}, ${eIdx})" class="text-slate-400 hover:text-red-600 text-xs p-1" title="Xóa bài"><i class="fa-solid fa-trash"></i></button>
                                             </div>` : ''}
                                         </div>
                                     </div>
@@ -743,7 +766,7 @@
             renameTarget = null;
         }
 
-        async function confirmRename() {
+        function confirmRename() {
             let newVal = document.getElementById('input-rename-val').value.trim();
             if (!newVal) return alert('Tên không được để trống!');
 
@@ -754,15 +777,15 @@
                 appData.subjects[sIdx].chapters[cIdx].exams[eIdx].title = newVal;
             }
 
-            await saveAppDataToCloud();
+            saveAppDataToCloud();
             closeRenameModal();
             renderHome();
         }
 
-        async function deleteChapter(sIdx, cIdx) {
+        function deleteChapter(sIdx, cIdx) {
             if (confirm('Xóa chương này cùng toàn bộ đề thi bên trong?')) {
                 appData.subjects[sIdx].chapters.splice(cIdx, 1);
-                await saveAppDataToCloud();
+                saveAppDataToCloud();
                 renderHome();
             }
         }
@@ -785,18 +808,18 @@
             document.getElementById('modal-subject').classList.remove('hidden');
         }
         function closeSubjectModal() { document.getElementById('modal-subject').classList.add('hidden'); }
-        async function saveNewSubject() {
+        function saveNewSubject() {
             const name = document.getElementById('input-new-subject').value.trim();
             if (!name) return alert('Vui lòng nhập tên môn học!');
             appData.subjects.push({ name: name, chapters: [] });
-            await saveAppDataToCloud();
+            saveAppDataToCloud();
             closeSubjectModal();
             renderHome();
         }
-        async function deleteSubject(sIdx) {
+        function deleteSubject(sIdx) {
             if (confirm('Xóa môn học này?')) {
                 appData.subjects.splice(sIdx, 1);
-                await saveAppDataToCloud();
+                saveAppDataToCloud();
                 renderHome();
             }
         }
@@ -886,7 +909,7 @@
 
             if (processedCount === 0) return alert('Không tìm thấy dữ liệu hợp lệ!');
 
-            await saveAppDataToCloud();
+            saveAppDataToCloud();
             closeCreateExamModal();
             renderHome();
             alert(`Đã nhập thành công ${processedCount} bài học!`);
@@ -956,10 +979,10 @@
             return questions;
         }
 
-        async function deleteExam(sIdx, cIdx, eIdx) {
+        function deleteExam(sIdx, cIdx, eIdx) {
             if (confirm('Xóa bài học này?')) {
                 appData.subjects[sIdx].chapters[cIdx].exams.splice(eIdx, 1);
-                await saveAppDataToCloud();
+                saveAppDataToCloud();
                 renderHome();
             }
         }
@@ -1048,7 +1071,7 @@
 
         function closeEditQuestionModal() { document.getElementById('modal-edit-question').classList.add('hidden'); }
 
-        async function saveEditedQuestion() {
+        function saveEditedQuestion() {
             let q = activeQuestions[currentQuestionIndex];
             q.questionText = document.getElementById('edit-q-text').value.trim();
             q.options = [
@@ -1070,7 +1093,7 @@
                     originalQ.correctAnswer = q.correctAnswer;
                     originalQ.explanation = q.explanation;
                 }
-                await saveAppDataToCloud();
+                saveAppDataToCloud();
             }
 
             closeEditQuestionModal();
@@ -1079,7 +1102,7 @@
             alert('Đã cập nhật câu hỏi thành công!');
         }
 
-        async function selectAnswer(optIdx) {
+        function selectAnswer(optIdx) {
             if (userAnswers[currentQuestionIndex] !== undefined) return;
             userAnswers[currentQuestionIndex] = optIdx;
             let q = activeQuestions[currentQuestionIndex];
@@ -1087,7 +1110,7 @@
             if (optIdx !== q.correctAnswer) {
                 if (!userPersonalData.mistakes.some(m => m.questionText === q.questionText)) {
                     userPersonalData.mistakes.push({ ...q, dateAdded: new Date().toISOString() });
-                    await saveUserPersonalData();
+                    saveUserPersonalData();
                 }
             }
             recordHabitToday();
@@ -1166,9 +1189,9 @@
             container.innerHTML = html;
         }
 
-        async function removeMistake(idx) {
+        function removeMistake(idx) {
             userPersonalData.mistakes.splice(idx, 1);
-            await saveUserPersonalData();
+            saveUserPersonalData();
             renderMistakes();
         }
 
@@ -1184,11 +1207,11 @@
             renderQuestion(); renderPalette(); updateStats();
         }
 
-        async function recordHabitToday() {
+        function recordHabitToday() {
             let todayStr = new Date().toISOString().split('T')[0];
             if (!userPersonalData.habits) userPersonalData.habits = {};
             userPersonalData.habits[todayStr] = true;
-            await saveUserPersonalData();
+            saveUserPersonalData();
         }
 
         function renderHabitTracker() {
@@ -1211,7 +1234,7 @@
         }
 
         function exportBackup() {
-            if (!currentUser || currentUser.role !== 'admin') return alert('Chỉ Admin mới có quyền xuất backup kho đề!');
+            if (!currentUser || currentUser.role !== 'admin') return alert('Bạn không có quyền thực hiện thao tác này!');
             let dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appData, null, 2));
             let dlAnchor = document.createElement('a');
             dlAnchor.setAttribute("href", dataStr);
@@ -1221,17 +1244,17 @@
             dlAnchor.remove();
         }
 
-        async function importBackup(event) {
-            if (!currentUser || currentUser.role !== 'admin') return alert('Chỉ Admin mới có quyền nhập dữ liệu kho đề!');
+        function importBackup(event) {
+            if (!currentUser || currentUser.role !== 'admin') return alert('Bạn không có quyền thực hiện thao tác này!');
             let file = event.target.files[0];
             if (!file) return;
             let reader = new FileReader();
-            reader.onload = async function(e) {
+            reader.onload = function(e) {
                 try {
                     let imported = JSON.parse(e.target.result);
                     if (imported && imported.subjects) {
                         appData = imported;
-                        await saveAppDataToCloud();
+                        saveAppDataToCloud();
                         renderHome();
                         alert('Nhập dữ liệu thành công!');
                     } else { alert('File JSON không hợp lệ!'); }
