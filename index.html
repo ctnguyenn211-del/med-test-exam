@@ -84,7 +84,6 @@
                     <h2 class="text-2xl font-bold text-slate-900">Danh Sách Môn Học & Đề Thi</h2>
                     <p class="text-sm text-slate-500">Lựa chọn bài học để bắt đầu luyện đề y khoa.</p>
                 </div>
-                <!-- Các nút Admin chỉ hiện khi đăng nhập Admin -->
                 <div id="admin-action-buttons" class="flex flex-wrap gap-2 hidden">
                     <button onclick="openSubjectModal()" class="bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-xl text-sm font-medium transition shadow-sm flex items-center">
                         <i class="fa-solid fa-plus mr-2"></i> Thêm Môn Học
@@ -264,7 +263,7 @@
         </div>
     </div>
 
-    <!-- Script xử lý logic & Admin Mode -->
+    <!-- Script xử lý logic -->
     <script>
         let appData = { subjects: [], mistakes: [], habits: {} };
         let currentExam = null;
@@ -276,10 +275,9 @@
         let activeQuestions = [];
         let collapsedSubjects = {};
         let collapsedChapters = {};
-        let isAdmin = false; // Mặc định là khách/người làm đề
+        let isAdmin = false;
 
-        // Mật khẩu Admin mặc định (Bạn có thể đổi tùy ý tại đây)
-        const ADMIN_PASSWORD = "npct2026";
+        const ADMIN_PASSWORD = "212696";
 
         function toggleAdminMode() {
             if (isAdmin) {
@@ -296,9 +294,7 @@
             }
         }
 
-        function closeAdminModal() {
-            document.getElementById('modal-admin-login').classList.add('hidden');
-        }
+        function closeAdminModal() { document.getElementById('modal-admin-login').classList.add('hidden'); }
 
         function verifyAdminPassword() {
             let pass = document.getElementById('input-admin-pass').value;
@@ -403,7 +399,8 @@
 
             let html = '';
             appData.subjects.forEach((subj, sIdx) => {
-                let isSubjCollapsed = collapsedSubjects[sIdx];
+                // Mặc định thu gọn (true) nếu chưa được thiết lập
+                let isSubjCollapsed = collapsedSubjects[sIdx] !== undefined ? collapsedSubjects[sIdx] : true;
                 html += `
                     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
                         <div class="bg-slate-50 px-6 py-4 flex justify-between items-center border-b border-slate-100">
@@ -422,7 +419,8 @@
                     html += `<p class="text-sm text-slate-400 italic">Chưa có chương học nào.</p>`;
                 } else {
                     subj.chapters.forEach((chap, cIdx) => {
-                        let isChapCollapsed = collapsedChapters[`${sIdx}_${cIdx}`];
+                        let chapKey = `${sIdx}_${cIdx}`;
+                        let isChapCollapsed = collapsedChapters[chapKey] !== undefined ? collapsedChapters[chapKey] : true;
                         html += `
                             <div class="space-y-2 bg-slate-50/60 p-4 rounded-xl border border-slate-100">
                                 <div class="flex justify-between items-center">
@@ -432,8 +430,8 @@
                                     </div>
                                     ${isAdmin ? `
                                     <div class="flex items-center space-x-1">
-                                        <button onclick="moveChapter(${sIdx},${cIdx}, -1)" class="text-slate-400 hover:text-slate-700 px-1 text-xs" title="Chuyển lên"><i class="fa-solid fa-arrow-up"></i></button>
-                                        <button onclick="moveChapter(${sIdx},${cIdx}, 1)" class="text-slate-400 hover:text-slate-700 px-1 text-xs" title="Chuyển xuống"><i class="fa-solid fa-arrow-down"></i></button>
+                                        <button onclick="moveChapter(${sIdx},${cIdx}, -1)" class="text-slate-400 hover:text-slate-700 px-1 text-xs" title="Chuyển lên (Đưa lên vị trí thấp hơn)"><i class="fa-solid fa-arrow-up"></i></button>
+                                        <button onclick="moveChapter(${sIdx},${cIdx}, 1)" class="text-slate-400 hover:text-slate-700 px-1 text-xs" title="Chuyển xuống (Đưa xuống vị trí cao hơn)"><i class="fa-solid fa-arrow-down"></i></button>
                                     </div>` : ''}
                                 </div>
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pl-4 pt-2 ${isChapCollapsed ? 'hidden' : ''}">
@@ -465,9 +463,20 @@
             container.innerHTML = html;
         }
 
-        function toggleSubjectCollapse(sIdx) { collapsedSubjects[sIdx] = !collapsedSubjects[sIdx]; renderHome(); }
-        function toggleChapterCollapse(sIdx, cIdx) { let key = `${sIdx}_${cIdx}`; collapsedChapters[key] = !collapsedChapters[key]; renderHome(); }
+        function toggleSubjectCollapse(sIdx) {
+            let current = collapsedSubjects[sIdx] !== undefined ? collapsedSubjects[sIdx] : true;
+            collapsedSubjects[sIdx] = !current;
+            renderHome();
+        }
 
+        function toggleChapterCollapse(sIdx, cIdx) {
+            let key = `${sIdx}_${cIdx}`;
+            let current = collapsedChapters[key] !== undefined ? collapsedChapters[key] : true;
+            collapsedChapters[key] = !current;
+            renderHome();
+        }
+
+        // Sắp xếp chương: Đảo chiều chuyển lên/xuống chuẩn thứ tự từ thấp đến cao
         async function moveChapter(sIdx, cIdx, direction) {
             let chapters = appData.subjects[sIdx].chapters;
             let targetIdx = cIdx + direction;
@@ -556,6 +565,7 @@
             alert('Tạo đề thi thành công và đã đồng bộ lên Cloud!');
         }
 
+        // Bộ phân tích câu hỏi + Tự động lọc/xóa bỏ các đáp án bị trùng lặp
         function parseBulkQuestions(text) {
             let questions = [];
             let rawBlocks = text.split(/(?=Câu\s+\d+[\.:]|Q\s*:\s*Câu)/i);
@@ -566,7 +576,7 @@
                 if (lines.length < 3) return;
 
                 let questionText = lines[0].replace(/^(Câu\s+\d+[\.:]?\s*|Q\s*:\s*)/i, '');
-                let options = [], correctAnswer = 0, explanation = "", i = 1;
+                let rawOptions = [], correctAnswer = 0, explanation = "", i = 1;
 
                 while (i < lines.length) {
                     let line = lines[i];
@@ -580,15 +590,35 @@
                         i++;
                     } else if (/^[A-D][\.\)]/i.test(line) || /^\*[A-D][\.\)]/i.test(line)) {
                         let isCorrect = line.startsWith('*');
-                        if (isCorrect) correctAnswer = options.length;
-                        options.push(line.replace(/^\*/, ''));
+                        if (isCorrect) correctAnswer = rawOptions.length;
+                        rawOptions.push(line.replace(/^\*/, ''));
                         i++;
                     } else {
-                        if (options.length === 0) { questionText += " " + line; }
+                        if (rawOptions.length === 0) { questionText += " " + line; }
                         else if (!explanation && (line.length > 0)) { explanation += " " + line; }
                         i++;
                     }
                 }
+
+                // TÍNH NĂNG: Xóa bỏ đáp án bị trùng lặp (lọc các option giống hệt nhau)
+                let uniqueMap = new Map();
+                let options = [];
+                let correctOptText = rawOptions[correctAnswer];
+
+                rawOptions.forEach(opt => {
+                    let cleanOpt = opt.replace(/^[A-D][\.\)]\s*/, '').trim();
+                    if (!uniqueMap.has(cleanOpt)) {
+                        uniqueMap.set(cleanOpt, true);
+                        options.push(opt);
+                    }
+                });
+
+                // Cập nhật lại vị trí đáp án đúng sau khi đã loại bỏ trùng lặp
+                if (correctOptText) {
+                    let newCorrectIdx = options.findIndex(o => o === correctOptText);
+                    if (newCorrectIdx !== -1) correctAnswer = newCorrectIdx;
+                }
+
                 if (options.length >= 2) {
                     questions.push({
                         id: questions.length + 1,
@@ -667,6 +697,7 @@
             });
             html += `</div>`;
 
+            // Hiển thị ngay lập tức không có độ trễ
             if (isAnswered && settings.showAnswer && q.explanation && q.explanation.trim() !== "") {
                 html += `
                     <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 text-sm space-y-1">
@@ -724,6 +755,7 @@
             alert('Đã cập nhật câu hỏi thành công!');
         }
 
+        // Hiện đáp án ngay lập tức khi click chọn (Bỏ mọi khoảng trễ)
         async function selectAnswer(optIdx) {
             if (userAnswers[currentQuestionIndex] !== undefined) return;
             userAnswers[currentQuestionIndex] = optIdx;
@@ -734,13 +766,16 @@
                 }
             }
             recordHabitToday();
-            await saveDataToCloud();
+            
+            // Render ngay lập tức trước khi gọi async lên cloud
             renderQuestion();
             renderPalette();
             updateStats();
 
+            await saveDataToCloud();
+
             if (settings.autoNext && currentQuestionIndex < activeQuestions.length - 1) {
-                setTimeout(() => nextQuestion(), 600);
+                setTimeout(() => nextQuestion(), 400);
             }
         }
 
