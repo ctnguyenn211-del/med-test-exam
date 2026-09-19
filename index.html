@@ -58,19 +58,16 @@
                 <button onclick="switchTab('mistakes')" id="nav-mistakes" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-red-800 transition relative"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Ôn câu sai <span id="badge-mistakes" class="absolute -top-1 -right-1 bg-amber-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold hidden">0</span></button>
                 <button onclick="switchTab('habit')" id="nav-habit" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-red-800 transition"><i class="fa-solid fa-calendar-check mr-1"></i> Habit Tracker</button>
                 
-                <!-- Nút Quản lý Users dành cho Admin -->
                 <button onclick="openUsersModal()" id="nav-users-btn" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-amber-600 hover:bg-amber-700 transition hidden flex items-center">
                     <i class="fa-solid fa-users-gear mr-1"></i> Duyệt Users
                 </button>
 
-                <!-- Nút Đăng xuất / Tài khoản -->
                 <div class="flex items-center space-x-2 bg-red-900/50 px-3 py-1.5 rounded-xl border border-red-600/40 text-sm">
                     <i class="fa-solid fa-user-shield text-amber-300" id="user-role-icon"></i>
                     <span id="nav-username" class="font-medium">Khách</span>
                     <button onclick="logoutAccount()" class="text-red-200 hover:text-white ml-2 text-xs underline">Đăng xuất</button>
                 </div>
 
-                <!-- Menu Dữ liệu (Chặn user thường tải xuống) -->
                 <div class="relative group" id="admin-data-menu">
                     <button class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-red-800 transition"><i class="fa-solid fa-database mr-1"></i> Dữ liệu</button>
                     <div class="absolute right-0 mt-1 w-48 bg-white text-slate-700 rounded-lg shadow-xl py-2 hidden group-hover:block border border-slate-100 z-50">
@@ -877,7 +874,7 @@
             }
         }
 
-        // HÀM NHẬP FILE ĐƯỢC TỐI ƯU HÓA HOÀN HẢO
+        // HÀM TẢI FILE
         async function saveNewExam() {
             const sIdx = document.getElementById('modal-select-subject').value;
             const folderInput = document.getElementById('modal-input-folder');
@@ -905,7 +902,6 @@
                 let file = item.file;
                 let fileName = file.name;
 
-                // Bỏ qua file ẩn tạm thời của Word (~$...) hoặc file không phải .docx
                 if (!fileName.toLowerCase().endsWith('.docx') || fileName.startsWith('~$')) continue;
 
                 try {
@@ -966,7 +962,7 @@
             }
 
             if (processedCount === 0) {
-                return alert('Không bóc tách được câu hỏi nào! Vui lòng đảm bảo bạn đang chọn đúng file Word dạng .docx.');
+                return alert('Không bóc tách được câu hỏi nào! Vui lòng đảm bảo bạn chọn đúng file .docx.');
             }
 
             saveAppDataToCloud();
@@ -975,95 +971,67 @@
             alert(`Thành công! Đã nhập ${processedCount} bài học mới.`);
         }
 
-        // BỘ ĐỌC CÂU HỎI MÁY TRẠNG THÁI (STATE MACHINE) CHÍNH XÁC Tuyệt ĐỐI
+        // BỘ TÁCH CÂU HỎI THUẬT TOÁN REGEX MỚI (KHÔNG PHỤ THUỘC VÀO XUỐNG DÒNG CỦA WORD)
         function parseBulkQuestions(text) {
             if (!text) return [];
 
-            let lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+            // Chuẩn hóa văn bản
+            let rawText = text.replace(/\r\n/g, ' ').replace(/\n/g, ' ').replace(/\r/g, ' ');
+
+            // Tách thành từng khối câu hỏi bắt đầu bằng Q: hoặc Q <số>. hoặc Câu <số>.
+            let blocks = rawText.split(/(?=(?:Q\s*[:\.]|Q\s*\d+[\.:]|Câu\s*\d+[\.:]|Question\s*\d+[\.:]))/i);
+
             let questions = [];
-            let currentQ = null;
-            let currentStage = 'NONE'; // các trạng thái: 'QUESTION', 'OPTION', 'ANSWER', 'EXPLANATION'
 
-            for (let rawLine of lines) {
-                let line = rawLine.trim();
-                if (!line) continue;
+            blocks.forEach(block => {
+                block = block.trim();
+                if (!block) return;
 
-                // 1. Kiểm tra Dòng Đáp án (ví dụ: "A: C. Viêm nội tâm mạc...", "Đáp án: C", "Answer: C")
-                let ansMatch = line.match(/^(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|ĐA\s*[:\.])\s*([A-D])(?:[\.\)\:\s]|$)/i);
-                if (ansMatch && currentQ) {
-                    let ansChar = ansMatch[1].toUpperCase();
-                    currentQ.correctAnswer = ansChar.charCodeAt(0) - 65;
-                    currentStage = 'ANSWER';
-                    continue;
-                }
+                // Regex quét toàn bộ thông tin câu hỏi
+                let match = block.match(/^(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:])?\s*(.*?)(?=\s*A[\.\)\:]\s*)(.*?)(?=\s*B[\.\)\:]\s*)(.*?)(?=\s*C[\.\)\:]\s*)(.*?)(?=\s*D[\.\)\:]\s*)(.*?)(?=\s*(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|ĐA\s*[:\.]|\*?[A-D][\.\)\:]|$))(?:(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|ĐA\s*[:\.]|\*?[A-D][\.\)\:])\s*([A-D])[\.\)\:]?\s*)?(?:(?:E\s*[:\.]|Exp\s*[:\.]|Explanation\s*[:\.]|Giải\s*thích\s*[:\.]|\*)\s*(.*))?$/i);
 
-                // 2. Kiểm tra Dòng Giải thích (ví dụ: "E: ...", "Giải thích: ...")
-                let expMatch = line.match(/^(?:E\s*[:\.]|Exp\s*[:\.]|Explanation\s*[:\.]|Giải\s*thích\s*[:\.])\s*(.*)/i);
-                if (expMatch && currentQ) {
-                    currentQ.explanation = expMatch[1].trim();
-                    currentStage = 'EXPLANATION';
-                    continue;
-                }
+                if (match) {
+                    let qText = match[1].replace(/^(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:])\s*/i, '').trim();
+                    let optA = "A. " + match[2].replace(/^A[\.\)\:]\s*/i, '').trim();
+                    let optB = "B. " + match[3].replace(/^B[\.\)\:]\s*/i, '').trim();
+                    let optC = "C. " + match[4].replace(/^C[\.\)\:]\s*/i, '').trim();
+                    let optDText = match[5].trim();
+                    
+                    // Xử lý cắt bớt phần A: hoặc E: nếu nó còn nằm dính ở cuối optDText
+                    optDText = optDText.replace(/\s*(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|E\s*[:\.]|Giải\s*thích\s*[:\.]).*/i, '').trim();
+                    let optD = "D. " + optDText.replace(/^D[\.\)\:]\s*/i, '').trim();
 
-                // 3. Kiểm tra Dòng Lựa chọn (A. ..., B. ..., C. ..., D. ..., *A. ...)
-                let optMatch = line.match(/^(\*?)([A-D])[\.\)\:]\s*(.*)/i);
-                if (optMatch && currentQ && (currentStage === 'QUESTION' || currentStage === 'OPTION')) {
-                    let isStarred = optMatch[1] === '*';
-                    let optLetter = optMatch[2].toUpperCase();
-                    let optContent = optMatch[3].trim();
-                    let fullOptText = optLetter + ". " + optContent;
+                    let ansChar = match[6] ? match[6].toUpperCase() : 'A';
+                    let correctIdx = ansChar.charCodeAt(0) - 65;
+                    if (correctIdx < 0 || correctIdx > 3) correctIdx = 0;
 
-                    if (isStarred) {
-                        currentQ.correctAnswer = currentQ.options.length;
-                    }
-                    currentQ.options.push(fullOptText);
-                    currentStage = 'OPTION';
-                    continue;
-                }
+                    let expText = match[7] ? match[7].trim() : "";
 
-                // 4. Kiểm tra Dòng Tiêu đề Câu hỏi mới (Q: Câu 1., Q 27., Câu 1., Question 1., 1.)
-                let isNewQ = false;
-                let cleanQText = line;
-
-                if (line.match(/^(?:Q\s*[:\.]|Q\s*\d+[\.:]|Câu\s*\d+[\.:]|Question\s*\d+[\.:])/i)) {
-                    isNewQ = true;
-                    cleanQText = line.replace(/^(?:Q\s*[:\.]?\s*|Câu\s*\d+[\.:]?\s*|Question\s*\d+[\.:]?\s*|\d+[\.:]\s*)+/i, '').trim();
-                } else if (currentStage === 'NONE' || currentStage === 'EXPLANATION' || (currentStage === 'ANSWER' && currentQ && currentQ.options.length >= 2)) {
-                    if (line.match(/^(?:\d+[\.:\)])\s*(.*)/i)) {
-                        isNewQ = true;
-                        cleanQText = line.replace(/^(?:\d+[\.:\)]\s*)+/i, '').trim();
+                    if (qText && match[2] && match[3]) {
+                        questions.push({
+                            id: questions.length + 1,
+                            questionText: qText,
+                            options: [optA, optB, optC, opt optD],
+                            correctAnswer: correctIdx,
+                            explanation: expText
+                        });
                     }
                 }
+            });
 
-                if (isNewQ) {
-                    if (currentQ && currentQ.options.length >= 2) {
-                        questions.push(currentQ);
-                    }
-                    currentQ = {
+            // Nếu cách trên không bắt được (do định dạng lạ), dùng thuật toán dự phòng quét theo cặp ký tự
+            if (questions.length === 0) {
+                let fallbackMatches = rawText.matchAll(/(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?)\s*(.*?)\s*A[\.\)\:]\s*(.*?)\s*B[\.\)\:]\s*(.*?)\s*C[\.\)\:]\s*(.*?)\s*D[\.\)\:]\s*(.*?)\s*A\s*[:\.]\s*([A-D])\s*(?:E\s*[:\.]\s*(.*?))?(?=(?:Q\s*[:\.]|Câu\s*\d+[\.:]|$))/gi);
+                for (let m of fallbackMatches) {
+                    let ansChar = m[6].toUpperCase();
+                    questions.push({
                         id: questions.length + 1,
-                        questionText: cleanQText,
-                        options: [],
-                        correctAnswer: 0,
-                        explanation: ""
-                    };
-                    currentStage = 'QUESTION';
-                    continue;
+                        questionText: m[1].trim(),
+                        options: ["A. " + m[2].trim(), "B. " + m[3].trim(), "C. " + m[4].trim(), "D. " + m[5].trim()],
+                        correctAnswer: ansChar.charCodeAt(0) - 65,
+                        explanation: m[7] ? m[7].trim() : ""
+                    });
                 }
-
-                // 5. Nối dòng văn bản kéo dài (Nhiều dòng)
-                if (currentQ) {
-                    if (currentStage === 'QUESTION') {
-                        currentQ.questionText += " " + line;
-                    } else if (currentStage === 'OPTION' && currentQ.options.length > 0) {
-                        currentQ.options[currentQ.options.length - 1] += " " + line;
-                    } else if (currentStage === 'EXPLANATION') {
-                        currentQ.explanation += (currentQ.explanation ? " " : "") + line;
-                    }
-                }
-            }
-
-            if (currentQ && currentQ.options.length >= 2) {
-                questions.push(currentQ);
             }
 
             return questions;
