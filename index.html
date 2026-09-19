@@ -322,7 +322,6 @@
         let collapsedSubjects = {};
         let collapsedChapters = {};
         let renameTarget = null;
-        let syncTimeout = null;
         let appDataUnsub = null;
         let usersUnsub = null;
 
@@ -523,21 +522,29 @@
         }
 
         // ============================================================
-        // FIREBASE SYNC V2
-        // Chống mất dữ liệu, snapshot cũ ghi đè và reset appData khi
-        // Firebase chưa có document.
+        // FIREBASE SYNC V3
+        // Chống mất dữ liệu do snapshot Cloud cũ ghi đè dữ liệu local.
+        //
+        // Quy tắc:
+        // 1. Mỗi thay đổi local có timestamp riêng.
+        // 2. Nếu local mới hơn Cloud -> upload local.
+        // 3. Chỉ nhận Cloud khi Cloud mới hơn local.
+        // 4. Backup local được tách theo username.
+        // 5. Firebase lỗi/offline không được reset appData.
         // ============================================================
 
         let isAppDataLoadedFromCloud = false;
         let isAppDataSaving = false;
         let pendingAppDataSave = false;
-        let lastSavedAppDataJSON = null;
-        let lastCloudAppDataJSON = null;
+        let syncTimeout = null;
+        let localAppDataUpdatedAt = 0;
+        let lastUploadedAppDataUpdatedAt = 0;
 
         function cloneAppData(data) {
             try {
                 return JSON.parse(JSON.stringify(data));
             } catch (e) {
+                console.error("[SYNC] Không clone được appData:", e);
                 return { subjects: [] };
             }
         }
@@ -546,17 +553,31 @@
             try {
                 return JSON.stringify(data);
             } catch (e) {
-                console.error("[SYNC] Không thể stringify appData:", e);
+                console.error("[SYNC] Không stringify được appData:", e);
                 return null;
             }
         }
 
-        function saveAppDataToLocal() {
+        function getAppDataLocalKey() {
+            const username =
+                currentUser && currentUser.username
+                    ? currentUser.username
+                    : "anonymous";
+
+            return "vmu_local_exam_backup_" + username;
+        }
+
+        function saveAppDataToLocal(updatedAt = localAppDataUpdatedAt) {
             try {
-                const json = getAppDataJSON();
-                if (json) {
-                    localStorage.setItem("vmu_local_exam_backup", json);
-                }
+                const data = cloneAppData(appData);
+
+                localStorage.setItem(
+                    getAppDataLocalKey(),
+                    JSON.stringify({
+                        updatedAt: Number(updatedAt) || Date.now(),
+                        data: data
+                    })
+                );
             } catch (e) {
                 console.error("[SYNC] Lỗi lưu backup local:", e);
             }
@@ -564,53 +585,118 @@
 
         function loadAppDataFromLocal() {
             try {
-                const localData = localStorage.getItem("vmu_local_exam_backup");
-                if (!localData) return false;
+                const raw = localStorage.getItem(getAppDataLocalKey());
 
-                const parsed = JSON.parse(localData);
+                if (!raw) {
+                    return {
+                        exists: false,
+                        updatedAt: 0,
+                        data: null
+                    };
+                }
 
+                const parsed = JSON.parse(raw);
+
+                // Format mới:
+                // { updatedAt, data }
+                if (
+                    parsed &&
+                    typeof parsed === "object" &&
+                    parsed.data &&
+                    Array.isArray(parsed.data.subjects)
+                ) {
+                    localAppDataUpdatedAt =
+                        Number(parsed.updatedAt) || 0;
+
+                    return {
+                        exists: true,
+                        updatedAt: localAppDataUpdatedAt,
+                        data: parsed.data
+                    };
+                }
+
+                // Tương thích backup cũ:
+                // { subjects: [...] }
                 if (
                     parsed &&
                     typeof parsed === "object" &&
                     Array.isArray(parsed.subjects)
                 ) {
-                    appData = parsed;
-                    return true;
+                    localAppDataUpdatedAt = 1;
+
+                    return {
+                        exists: true,
+                        updatedAt: 1,
+                        data: parsed
+                    };
                 }
+
             } catch (e) {
                 console.error("[SYNC] Lỗi đọc backup local:", e);
             }
 
-            return false;
+            return {
+                exists: false,
+                updatedAt: 0,
+                data: null
+            };
         }
 
-        // ------------------------------------------------------------
-        // Khởi động realtime sync
-        // ------------------------------------------------------------
+        function getCloudAppData(docSnap) {
+            if (!docSnap.exists()) return null;
+
+            const raw = docSnap.data();
+
+            if (
+                !raw ||
+                typeof raw !== "object" ||
+                !Array.isArray(raw.subjects)
+            ) {
+                return null;
+            }
+
+            const cloudUpdatedAt =
+                Number(raw.__syncUpdatedAt) || 0;
+
+            const data = { ...raw };
+            delete data.__syncUpdatedAt;
+
+            return {
+                updatedAt: cloudUpdatedAt,
+                data: data
+            };
+        }
+
         function startAppDataRealtimeSync() {
 
             if (appDataUnsub) {
                 try {
                     appDataUnsub();
                 } catch (e) {}
+
                 appDataUnsub = null;
             }
 
             isAppDataLoadedFromCloud = false;
             isAppDataSaving = false;
             pendingAppDataSave = false;
-            lastSavedAppDataJSON = null;
-            lastCloudAppDataJSON = null;
+            lastUploadedAppDataUpdatedAt = 0;
 
-            // Hiển thị backup local trước để app không bị trắng khi mạng chậm.
-            const hasLocalData = loadAppDataFromLocal();
+            // --------------------------------------------------------
+            // 1. Khôi phục local trước
+            // --------------------------------------------------------
+            const local = loadAppDataFromLocal();
 
-            if (hasLocalData) {
+            if (local.exists && local.data) {
+                appData = cloneAppData(local.data);
+
                 console.log(
                     "[SYNC] Khôi phục local:",
                     appData.subjects.length,
-                    "subjects"
+                    "subjects | updatedAt:",
+                    local.updatedAt
                 );
+
                 renderHome();
             }
 
@@ -620,6 +706,7 @@
             }
 
             try {
+
                 const docRef = window.firebaseDoc(
                     window.firebaseDB,
                     "users",
@@ -628,28 +715,50 @@
 
                 appDataUnsub = window.firebaseOnSnapshot(
                     docRef,
+
                     async (docSnap) => {
 
-                        // Firebase chưa có document.
-                        // Tuyệt đối không reset appData thành [].
+                        // ------------------------------------------------
+                        // CLOUD CHƯA CÓ DOCUMENT
+                        // ------------------------------------------------
                         if (!docSnap.exists()) {
 
-                            console.warn("[SYNC] users/my_data chưa tồn tại.");
+                            console.warn(
+                                "[SYNC] Cloud chưa có users/my_data."
+                            );
 
                             if (
-                                hasLocalData ||
-                                (appData &&
-                                 Array.isArray(appData.subjects) &&
-                                 appData.subjects.length > 0)
+                                appData &&
+                                Array.isArray(appData.subjects) &&
+                                appData.subjects.length > 0
                             ) {
                                 console.log(
-                                    "[SYNC] Cloud trống -> đẩy dữ liệu local lên Cloud."
+                                    "[SYNC] Cloud trống -> upload dữ liệu local."
                                 );
 
+                                if (!localAppDataUpdatedAt) {
+                                    localAppDataUpdatedAt = Date.now();
+                                    saveAppDataToLocal(
+                                        localAppDataUpdatedAt
+                                    );
+                                }
+
                                 await forceSaveAppDataToCloud();
+
                             } else {
-                                appData = { subjects: [] };
-                                saveAppDataToLocal();
+
+                                // Chỉ tạo dữ liệu rỗng nếu thực sự
+                                // không có dữ liệu local.
+                                appData = {
+                                    subjects: []
+                                };
+
+                                localAppDataUpdatedAt = Date.now();
+
+                                saveAppDataToLocal(
+                                    localAppDataUpdatedAt
+                                );
+
                                 renderHome();
                             }
 
@@ -657,128 +766,210 @@
                             return;
                         }
 
-                        const cloudData = docSnap.data();
+                        const cloud = getCloudAppData(docSnap);
 
-                        if (
-                            !cloudData ||
-                            typeof cloudData !== "object" ||
-                            !Array.isArray(cloudData.subjects)
-                        ) {
+                        if (!cloud) {
                             console.error(
-                                "[SYNC] Dữ liệu Cloud không hợp lệ:",
-                                cloudData
+                                "[SYNC] Document Cloud không hợp lệ."
                             );
                             return;
                         }
 
-                        const cloudJSON = JSON.stringify(cloudData);
-                        const localJSON = JSON.stringify(appData);
+                        const cloudUpdatedAt =
+                            cloud.updatedAt;
 
-                        lastCloudAppDataJSON = cloudJSON;
+                        const localUpdatedAt =
+                            Number(localAppDataUpdatedAt) || 0;
 
-                        // Đã giống local -> không render/ghi lại.
+                        console.log(
+                            "[SYNC] So sánh phiên bản:",
+                            {
+                                local: localUpdatedAt,
+                                cloud: cloudUpdatedAt,
+                                saving: isAppDataSaving,
+                                pending: pendingAppDataSave
+                            }
+                        );
+
+                        // ------------------------------------------------
+                        // LOCAL MỚI HƠN CLOUD
+                        // => Cloud cũ, KHÔNG được ghi đè local.
+                        // ------------------------------------------------
+                        if (localUpdatedAt > cloudUpdatedAt) {
+
+                            console.log(
+                                "[SYNC] LOCAL MỚI HƠN CLOUD -> giữ local và upload."
+                            );
+
+                            if (!isAppDataSaving) {
+                                await forceSaveAppDataToCloud();
+                            }
+
+                            isAppDataLoadedFromCloud = true;
+                            return;
+                        }
+
+                        // ------------------------------------------------
+                        // CLOUD MỚI HƠN LOCAL
+                        // => nhận Cloud.
+                        // ------------------------------------------------
+                        if (cloudUpdatedAt > localUpdatedAt) {
+
+                            console.log(
+                                "[SYNC] CLOUD MỚI HƠN LOCAL -> nhận Cloud."
+                            );
+
+                            appData = cloneAppData(cloud.data);
+
+                            localAppDataUpdatedAt =
+                                cloudUpdatedAt;
+
+                            saveAppDataToLocal(
+                                localAppDataUpdatedAt
+                            );
+
+                            isAppDataLoadedFromCloud = true;
+                            pendingAppDataSave = false;
+
+                            renderHome();
+                            return;
+                        }
+
+                        // ------------------------------------------------
+                        // Cùng version.
+                        // Nếu dữ liệu giống nhau thì không làm gì.
+                        // ------------------------------------------------
+                        const cloudJSON =
+                            getAppDataJSON(cloud.data);
+
+                        const localJSON =
+                            getAppDataJSON(appData);
+
                         if (cloudJSON === localJSON) {
                             isAppDataLoadedFromCloud = true;
                             return;
                         }
 
-                        // Snapshot chính là kết quả của lần save vừa thực hiện.
-                        if (cloudJSON === lastSavedAppDataJSON) {
-                            isAppDataLoadedFromCloud = true;
-                            pendingAppDataSave = false;
-                            return;
-                        }
+                        // Hai bên cùng timestamp nhưng khác dữ liệu.
+                        // Không tự ý xóa local; giữ local và upload lại.
+                        console.warn(
+                            "[SYNC] Cùng timestamp nhưng dữ liệu khác nhau -> giữ local."
+                        );
 
-                        // Local đang có thay đổi chưa upload.
-                        // Không để snapshot cũ ghi đè thay đổi.
-                        if (isAppDataSaving || pendingAppDataSave) {
-                            console.warn(
-                                "[SYNC] Bỏ qua Cloud snapshot vì local đang có thay đổi chưa upload."
+                        if (!isAppDataSaving) {
+                            localAppDataUpdatedAt = Date.now();
+
+                            saveAppDataToLocal(
+                                localAppDataUpdatedAt
                             );
-                            return;
+
+                            await forceSaveAppDataToCloud();
                         }
 
-                        // Không có thay đổi local -> nhận bản Cloud mới.
-                        console.log("[SYNC] Nhận dữ liệu mới từ Cloud.");
-
-                        appData = cloneAppData(cloudData);
-                        saveAppDataToLocal();
                         isAppDataLoadedFromCloud = true;
-
-                        renderHome();
                     },
+
                     (err) => {
                         console.error(
-                            "[SYNC] Lỗi Firebase Realtime:",
+                            "[SYNC] Firebase Realtime lỗi:",
                             err
                         );
 
-                        // Firebase lỗi thì GIỮ NGUYÊN appData/local backup.
+                        // QUAN TRỌNG:
+                        // Firebase lỗi KHÔNG được reset appData.
                     }
                 );
 
             } catch (e) {
+
                 console.error(
-                    "[SYNC] Không thể khởi tạo realtime listener:",
+                    "[SYNC] Không thể khởi tạo Firebase listener:",
                     e
                 );
 
-                // Không reset appData khi listener lỗi.
+                // KHÔNG reset appData.
             }
         }
 
-        // ------------------------------------------------------------
-        // Upload ngay lập tức lên Firebase
-        // ------------------------------------------------------------
         async function forceSaveAppDataToCloud() {
 
             if (
                 !currentUser ||
                 currentUser.role !== "admin"
             ) {
-                console.warn("[SYNC] Không có quyền admin.");
+                console.warn(
+                    "[SYNC] Chỉ admin mới được lưu appData."
+                );
+
                 return false;
             }
-
-            // Luôn giữ backup local trước.
-            saveAppDataToLocal();
 
             if (!window.firebaseDB) {
-                console.warn("[SYNC] Firebase chưa sẵn sàng.");
+                console.warn(
+                    "[SYNC] Firebase chưa sẵn sàng."
+                );
+
+                saveAppDataToLocal(
+                    localAppDataUpdatedAt
+                );
+
                 return false;
             }
 
-            const dataToSave = cloneAppData(appData);
-            const jsonToSave = JSON.stringify(dataToSave);
+            // Nếu chưa có version thì tạo version.
+            if (!localAppDataUpdatedAt) {
+                localAppDataUpdatedAt = Date.now();
+            }
 
-            lastSavedAppDataJSON = jsonToSave;
+            const dataToSave =
+                cloneAppData(appData);
+
+            const versionToSave =
+                Number(localAppDataUpdatedAt);
+
+            // Lưu local TRƯỚC khi upload.
+            saveAppDataToLocal(versionToSave);
+
             isAppDataSaving = true;
-            pendingAppDataSave = false;
 
             try {
+
                 const docRef = window.firebaseDoc(
                     window.firebaseDB,
                     "users",
                     "my_data"
                 );
 
+                // Metadata __syncUpdatedAt nằm ngoài appData.
+                // Khi đọc lại sẽ được loại bỏ.
                 await window.firebaseSetDoc(
                     docRef,
-                    dataToSave
+                    {
+                        ...dataToSave,
+                        __syncUpdatedAt: versionToSave
+                    }
                 );
 
-                lastCloudAppDataJSON = jsonToSave;
+                lastUploadedAppDataUpdatedAt =
+                    versionToSave;
 
-                console.log("[SYNC] Upload appData thành công.");
+                console.log(
+                    "[SYNC] Upload thành công. Version:",
+                    versionToSave
+                );
+
                 return true;
 
             } catch (e) {
+
                 console.error(
-                    "[SYNC] Upload appData thất bại:",
+                    "[SYNC] Upload Firebase thất bại:",
                     e
                 );
 
-                // Không xóa local, không reset appData.
+                // Dữ liệu local VẪN được giữ.
+                saveAppDataToLocal(versionToSave);
+
                 return false;
 
             } finally {
@@ -786,11 +977,6 @@
             }
         }
 
-        // ------------------------------------------------------------
-        // Hàm được gọi mỗi khi admin thay đổi dữ liệu đề.
-        // Có debounce 300ms để tránh hàng loạt thao tác tạo hàng loạt
-        // request Firebase.
-        // ------------------------------------------------------------
         function saveAppDataToCloud() {
 
             if (
@@ -800,10 +986,16 @@
                 return;
             }
 
-            // Local được lưu NGAY.
-            saveAppDataToLocal();
+            // --------------------------------------------------------
+            // QUAN TRỌNG:
+            // Mỗi lần sửa dữ liệu -> tăng version local NGAY LẬP TỨC.
+            // --------------------------------------------------------
+            localAppDataUpdatedAt = Date.now();
 
-            // Đánh dấu có thay đổi chưa upload.
+            saveAppDataToLocal(
+                localAppDataUpdatedAt
+            );
+
             pendingAppDataSave = true;
 
             if (syncTimeout) {
@@ -812,8 +1004,26 @@
             }
 
             syncTimeout = setTimeout(async () => {
+
                 syncTimeout = null;
+
+                const versionAtSchedule =
+                    localAppDataUpdatedAt;
+
                 await forceSaveAppDataToCloud();
+
+                // Nếu trong lúc upload lại có thay đổi mới,
+                // tiếp tục upload phiên bản mới.
+                if (
+                    localAppDataUpdatedAt >
+                    versionAtSchedule
+                ) {
+                    pendingAppDataSave = true;
+                    saveAppDataToCloud();
+                } else {
+                    pendingAppDataSave = false;
+                }
+
             }, 300);
         }
 
