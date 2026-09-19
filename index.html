@@ -399,7 +399,6 @@
 
             let html = '';
             appData.subjects.forEach((subj, sIdx) => {
-                // Mặc định thu gọn (true) nếu chưa được thiết lập
                 let isSubjCollapsed = collapsedSubjects[sIdx] !== undefined ? collapsedSubjects[sIdx] : true;
                 html += `
                     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
@@ -430,8 +429,8 @@
                                     </div>
                                     ${isAdmin ? `
                                     <div class="flex items-center space-x-1">
-                                        <button onclick="moveChapter(${sIdx},${cIdx}, -1)" class="text-slate-400 hover:text-slate-700 px-1 text-xs" title="Chuyển lên (Đưa lên vị trí thấp hơn)"><i class="fa-solid fa-arrow-up"></i></button>
-                                        <button onclick="moveChapter(${sIdx},${cIdx}, 1)" class="text-slate-400 hover:text-slate-700 px-1 text-xs" title="Chuyển xuống (Đưa xuống vị trí cao hơn)"><i class="fa-solid fa-arrow-down"></i></button>
+                                        <button onclick="moveChapter(${sIdx},${cIdx}, -1)" class="text-slate-400 hover:text-slate-700 px-1 text-xs" title="Chuyển lên (Đưa lên vị trí cao hơn)"><i class="fa-solid fa-arrow-up"></i></button>
+                                        <button onclick="moveChapter(${sIdx},${cIdx}, 1)" class="text-slate-400 hover:text-slate-700 px-1 text-xs" title="Chuyển xuống (Đưa xuống vị trí thấp hơn)"><i class="fa-solid fa-arrow-down"></i></button>
                                     </div>` : ''}
                                 </div>
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pl-4 pt-2 ${isChapCollapsed ? 'hidden' : ''}">
@@ -476,7 +475,7 @@
             renderHome();
         }
 
-        // Sắp xếp chương: Đảo chiều chuyển lên/xuống chuẩn thứ tự từ thấp đến cao
+        // Sắp xếp chương: Đã đảo chiều để từ thấp (trên) đến cao (dưới) chuẩn xác
         async function moveChapter(sIdx, cIdx, direction) {
             let chapters = appData.subjects[sIdx].chapters;
             let targetIdx = cIdx + direction;
@@ -600,7 +599,7 @@
                     }
                 }
 
-                // TÍNH NĂNG: Xóa bỏ đáp án bị trùng lặp (lọc các option giống hệt nhau)
+                // Xóa bỏ đáp án bị trùng lặp
                 let uniqueMap = new Map();
                 let options = [];
                 let correctOptText = rawOptions[correctAnswer];
@@ -613,7 +612,6 @@
                     }
                 });
 
-                // Cập nhật lại vị trí đáp án đúng sau khi đã loại bỏ trùng lặp
                 if (correctOptText) {
                     let newCorrectIdx = options.findIndex(o => o === correctOptText);
                     if (newCorrectIdx !== -1) correctAnswer = newCorrectIdx;
@@ -697,7 +695,6 @@
             });
             html += `</div>`;
 
-            // Hiển thị ngay lập tức không có độ trễ
             if (isAnswered && settings.showAnswer && q.explanation && q.explanation.trim() !== "") {
                 html += `
                     <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 text-sm space-y-1">
@@ -755,7 +752,7 @@
             alert('Đã cập nhật câu hỏi thành công!');
         }
 
-        // Hiện đáp án ngay lập tức khi click chọn (Bỏ mọi khoảng trễ)
+        // Hiện đáp án ngay lập tức khi click chọn
         async function selectAnswer(optIdx) {
             if (userAnswers[currentQuestionIndex] !== undefined) return;
             userAnswers[currentQuestionIndex] = optIdx;
@@ -767,7 +764,6 @@
             }
             recordHabitToday();
             
-            // Render ngay lập tức trước khi gọi async lên cloud
             renderQuestion();
             renderPalette();
             updateStats();
