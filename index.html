@@ -41,13 +41,120 @@
         window.firebaseOnSnapshot = onSnapshot;
         window.firebaseRunTransaction = runTransaction;
 
+/* ================= VMU_SYNC_FIXED_V1 =================
+   Simple personal-study sync:
+   - Firebase is the source of truth when explicitly refreshing.
+   - Realtime listener never blindly overwrites local edits.
+   - A manual sync always pulls the latest cloud snapshot.
+   - Failed cloud operations never clear local data.
+======================================================== */
+window.VMU_SYNC_FIXED_V1 = true;
+
+window.vmuSyncFromCloudNow = async function(showMessage = true) {
+    try {
+        const ref = window.firebaseDoc(window.firebaseDb, "users", "my_data");
+        const snap = await window.firebaseGetDoc(ref);
+
+        if (!snap.exists()) {
+            if (showMessage) alert("Firebase chưa có dữ liệu.");
+            return false;
+        }
+
+        const cloud = snap.data() || {};
+        const cloudData = cloud.data || cloud.appData || cloud;
+
+        if (!cloudData || typeof cloudData !== "object") {
+            if (showMessage) alert("Dữ liệu Firebase không hợp lệ.");
+            return false;
+        }
+
+        const normalized = normalizeAppData(cloneAppData(cloudData));
+        appData = normalized;
+
+        // Reset the acknowledged base to exactly what was downloaded.
+        baseAppData = cloneAppData(normalized);
+        baseCloudUpdatedAt = cloud.updatedAt || Date.now();
+
+        try {
+            localStorage.setItem("appData", JSON.stringify(appData));
+            localStorage.setItem("VMU_LAST_CLOUD_DATA", JSON.stringify(appData));
+            localStorage.setItem("VMU_LAST_CLOUD_UPDATED_AT", String(baseCloudUpdatedAt));
+        } catch (e) {
+            console.warn("[VMU SYNC] Không lưu được local cache:", e);
+        }
+
+        if (typeof renderAll === "function") renderAll();
+        else if (typeof renderApp === "function") renderApp();
+
+        if (showMessage) alert("Đã tải dữ liệu mới nhất từ Firebase.");
+        return true;
+    } catch (e) {
+        console.error("[VMU SYNC] Pull Firebase failed:", e);
+        if (showMessage) alert("Không thể đồng bộ từ Firebase: " + (e.message || e));
+        return false;
+    }
+};
+
+window.vmuSyncStatus = "ready";
+window.vmuSetSyncStatus = function(status, message) {
+    window.vmuSyncStatus = status;
+    const candidates = [
+        document.getElementById("syncStatus"),
+        document.getElementById("firebaseStatus"),
+        document.querySelector("[data-sync-status]")
+    ].filter(Boolean);
+    candidates.forEach(el => {
+        el.textContent = message || status;
+        el.dataset.syncStatus = status;
+    });
+};
+
+
+
         window.addEventListener('DOMContentLoaded', () => {
             if (typeof window.initAppSession === 'function') {
                 window.initAppSession();
             }
         });
     </script>
+
+<style id="VMU_SYNC_BUTTON_FIXED_V1">
+#vmuSyncNowFixedBtn{
+  position:fixed;right:18px;bottom:18px;z-index:99999;
+  border:0;border-radius:999px;padding:10px 15px;
+  font-weight:700;cursor:pointer;
+  box-shadow:0 3px 14px rgba(0,0,0,.18);
+}
+#vmuSyncNowFixedBtn.sync-busy{opacity:.65;cursor:wait}
+</style>
+
+
+<script id="VMU_SYNC_CACHE_GUARD_V1">
+/* Preserve an emergency local copy before the application starts. */
+(function(){
+  try{
+    const keys=["appData","VMU_APP_DATA","vmuAppData"];
+    for(const k of keys){
+      const v=localStorage.getItem(k);
+      if(v && v.length>20){
+        localStorage.setItem("VMU_EMERGENCY_BACKUP_"+k,v);
+        break;
+      }
+    }
+  }catch(e){ console.warn("[VMU] cache guard:",e); }
+})();
+</script>
+
 </head>
+
+<!-- VMU_SYNC_MODEL_DOCUMENTED:
+     This build is intended for one personal account used on multiple devices.
+     Firebase is the canonical shared dataset.
+     Manual "Đồng bộ Firebase" pulls the latest cloud snapshot.
+     Local cache is retained only as a fallback and is never treated as newer
+     than Firebase merely because the page was opened on another device.
+-->
+
 <body class="bg-[#FFF5F8] text-slate-800 font-sans antialiased min-h-screen flex flex-col">
 
     <!-- Navbar -->
@@ -2205,5 +2312,36 @@ function extractNumber(name) {
             }
         }
     </script>
+
+<script id="VMU_SYNC_BUTTON_FIXED_V1">
+(function(){
+  function installSyncButton(){
+    if(document.getElementById("vmuSyncNowFixedBtn")) return;
+    const btn=document.createElement("button");
+    btn.id="vmuSyncNowFixedBtn";
+    btn.type="button";
+    btn.textContent="🔄 Đồng bộ Firebase";
+    btn.title="Tải dữ liệu mới nhất từ Firebase";
+    btn.addEventListener("click", async function(){
+      if(btn.classList.contains("sync-busy")) return;
+      btn.classList.add("sync-busy");
+      btn.textContent="⏳ Đang đồng bộ...";
+      try{
+        if(typeof window.vmuSyncFromCloudNow !== "function"){
+          throw new Error("Hệ thống đồng bộ chưa sẵn sàng.");
+        }
+        await window.vmuSyncFromCloudNow(true);
+      }finally{
+        btn.classList.remove("sync-busy");
+        btn.textContent="🔄 Đồng bộ Firebase";
+      }
+    });
+    document.body.appendChild(btn);
+  }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",installSyncButton);
+  else installSyncButton();
+})();
+</script>
+
 </body>
 </html>
