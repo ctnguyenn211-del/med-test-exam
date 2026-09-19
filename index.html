@@ -70,7 +70,7 @@
                     <button onclick="logoutAccount()" class="text-red-200 hover:text-white ml-2 text-xs underline">Đăng xuất</button>
                 </div>
 
-                <!-- Menu Dữ liệu (Đã chặn user tải xuống, chỉ Admin mới thấy nút xuất dữ liệu) -->
+                <!-- Menu Dữ liệu (Đã chặn user tải xuống, chỉ Admin mới thấy) -->
                 <div class="relative group" id="admin-data-menu">
                     <button class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-red-800 transition"><i class="fa-solid fa-database mr-1"></i> Dữ liệu</button>
                     <div class="absolute right-0 mt-1 w-48 bg-white text-slate-700 rounded-lg shadow-xl py-2 hidden group-hover:block border border-slate-100 z-50">
@@ -234,7 +234,7 @@
         </div>
     </div>
 
-    <!-- MODAL: TẠO ĐỀ / TẢI FOLDER WORD -->
+    <!-- MODAL: TẠO ĐỀ / TẢI FOLDER HOẶC FILE WORD -->
     <div id="modal-exam" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center border-b pb-3">
@@ -244,23 +244,41 @@
             <div class="space-y-4 text-sm">
                 <div>
                     <label class="block font-medium text-slate-700 mb-1">Chọn Môn Học Đích</label>
-                    <select id="modal-select-subject" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600"></select>
+                    <select id="modal-select-subject" onchange="updateChapterDropdown()" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600"></select>
                 </div>
                 
+                <!-- PHẦN 1: TẢI FOLDER (TỰ PHÂN LOẠI) -->
                 <div class="p-5 bg-red-50/50 border-2 border-dashed border-red-300 rounded-2xl space-y-3">
-                    <label class="block font-bold text-slate-800"><i class="fa-solid fa-folder-open text-amber-500 mr-2"></i> Tải lên Folder chứa các file Word (.docx)</label>
-                    <p class="text-xs text-slate-500">Hệ thống sẽ tự động đọc cấu trúc thư mục hoặc tên file để phân loại vào đúng chương và bài!</p>
+                    <label class="block font-bold text-slate-800"><i class="fa-solid fa-folder-open text-amber-500 mr-2"></i> Cách 1: Tải lên Folder chứa các file Word (.docx)</label>
+                    <p class="text-xs text-slate-500">Hệ thống sẽ tự động đọc tên thư mục hoặc tên file để tự động phân loại vào đúng chương và bài!</p>
                     <input type="file" id="modal-input-folder" accept=".docx" multiple webkitdirectory directory class="w-full text-sm text-slate-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-red-700 file:text-white hover:file:bg-red-800 cursor-pointer">
                 </div>
 
-                <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                    <label class="block font-medium text-slate-700"><i class="fa-solid fa-file-word text-blue-600 mr-2"></i> Hoặc chọn nhiều file Word đơn lẻ</label>
-                    <input type="file" id="modal-input-docs" accept=".docx" multiple class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+                <!-- PHẦN 2: TẢI FILE ĐƠN LẺ (CHỌN CHƯƠNG CÓ SẴN HOẶC TỰ THÊM) -->
+                <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <label class="block font-bold text-slate-800"><i class="fa-solid fa-file-word text-blue-600 mr-2"></i> Cách 2: Chọn các file Word đơn lẻ</label>
+                    
+                    <div>
+                        <label class="block font-medium text-slate-700 mb-1 text-xs">Chọn chương đích:</label>
+                        <select id="modal-select-chapter" onchange="handleChapterSelectChange()" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600 text-sm">
+                            <!-- Được load động -->
+                        </select>
+                    </div>
+
+                    <div id="new-chapter-input-container" class="hidden">
+                        <label class="block font-medium text-slate-700 mb-1 text-xs">Nhập tên chương mới:</label>
+                        <input type="text" id="modal-input-new-chapter" placeholder="Ví dụ: Chương 2: Tuần hoàn..." class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600 text-sm">
+                    </div>
+
+                    <div>
+                        <label class="block font-medium text-slate-700 mb-1 text-xs">Chọn file Word (.docx):</label>
+                        <input type="file" id="modal-input-docs" accept=".docx" multiple class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+                    </div>
                 </div>
             </div>
             <div class="flex justify-end space-x-3 pt-2 border-t">
                 <button onclick="closeCreateExamModal()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-sm font-medium">Hủy</button>
-                <button onclick="saveNewExam()" class="bg-red-700 hover:bg-red-800 text-white px-5 py-2 rounded-xl text-sm font-medium">Bắt Đầu Phân Loại & Nhập Đề</button>
+                <button onclick="saveNewExam()" class="bg-red-700 hover:bg-red-800 text-white px-5 py-2 rounded-xl text-sm font-medium">Bắt Đầu Xử Lý & Nhập Đề</button>
             </div>
         </div>
     </div>
@@ -308,7 +326,7 @@
         </div>
     </div>
 
-    <!-- Script xử lý logic tối ưu hóa tốc độ -->
+    <!-- Script xử lý logic tối ưu hóa tốc độ và chọn chương linh hoạt -->
     <script>
         let appData = { subjects: [] };
         let userPersonalData = { mistakes: [], habits: {} };
@@ -323,7 +341,7 @@
         let collapsedSubjects = {};
         let collapsedChapters = {};
         let renameTarget = null;
-        let syncTimeout = null; // Biến debounce để đồng bộ ngầm mượt mà
+        let syncTimeout = null;
 
         const ADMIN_PASSWORD = "212696";
 
@@ -354,12 +372,12 @@
                 icon.className = "fa-solid fa-user-shield text-amber-300";
                 usersBtn.classList.remove('hidden');
                 adminBtns.classList.remove('hidden');
-                adminDataMenu.classList.remove('hidden'); // Hiển thị nút dữ liệu cho Admin
+                adminDataMenu.classList.remove('hidden');
             } else {
                 icon.className = "fa-solid fa-user text-emerald-300";
                 usersBtn.classList.add('hidden');
                 adminBtns.classList.add('hidden');
-                adminDataMenu.classList.add('hidden'); // CHẶN HOÀN TOÀN menu dữ liệu (tải file xuống) đối với User thường
+                adminDataMenu.classList.add('hidden');
             }
         }
 
@@ -494,7 +512,6 @@
 
         function closeUsersModal() { document.getElementById('modal-users').classList.add('hidden'); }
 
-        // Tối ưu tốc độ duyệt user: Phản hồi giao diện tức thì bằng DOM trực tiếp, đồng thời gửi lệnh ngầm lên Firebase
         async function approveUser(username) {
             let statusEl = document.getElementById(`user-status-${username}`);
             if (statusEl) {
@@ -525,7 +542,6 @@
             }
         }
 
-        // HÀM TẢI ĐỀ SIÊU TỐC TỪ LOCALSTORAGE VÀ ĐỒNG BỘ NGẦM TRÊN MÂY
         async function loadAppData() {
             let localData = localStorage.getItem("vmu_local_exam_backup");
             if (localData) {
@@ -576,7 +592,6 @@
             renderHome();
         }
 
-        // TỐI ƯU TỐC ĐỘ XÓA & THAO TÁC: Lưu LocalStorage ngay lập tức (0ms độ trễ) và dùng Debounce đẩy ngầm lên Firebase
         function saveAppDataToCloud() {
             if (!currentUser || currentUser.role !== 'admin') return;
             let jsonStr = JSON.stringify(appData);
@@ -590,7 +605,7 @@
                         await window.firebaseSetDoc(docRef, appData);
                     }
                 } catch (e) {}
-            }, 800); // Trì hoãn 800ms để gộp nhiều lệnh xóa liên tục thành 1 request duy nhất lên mây
+            }, 800);
         }
 
         async function loadUserPersonalData() {
@@ -624,8 +639,6 @@
             } catch(e) {}
             updateMistakeBadge();
         }
-
-        window.onload = function() {};
 
         function switchTab(tabId) {
             document.getElementById('tab-home').classList.add('hidden');
@@ -828,11 +841,42 @@
             const selectSubj = document.getElementById('modal-select-subject');
             selectSubj.innerHTML = '';
             appData.subjects.forEach((s, idx) => { selectSubj.innerHTML += `<option value="${idx}">${s.name}</option>`; });
+            
             document.getElementById('modal-input-folder').value = '';
             document.getElementById('modal-input-docs').value = '';
+            document.getElementById('modal-input-new-chapter').value = '';
+            
+            updateChapterDropdown();
             document.getElementById('modal-exam').classList.remove('hidden');
         }
         function closeCreateExamModal() { document.getElementById('modal-exam').classList.add('hidden'); }
+
+        function updateChapterDropdown() {
+            const sIdx = document.getElementById('modal-select-subject').value;
+            const selectChap = document.getElementById('modal-select-chapter');
+            selectChap.innerHTML = '';
+            
+            if (sIdx === "" || !appData.subjects[sIdx]) return;
+            let subj = appData.subjects[sIdx];
+
+            if (subj.chapters && subj.chapters.length > 0) {
+                subj.chapters.forEach((chap, idx) => {
+                    selectChap.innerHTML += `<option value="${idx}">${chap.chapterName}</option>`;
+                });
+            }
+            selectChap.innerHTML += `<option value="NEW">➕ Thêm chương mới...</option>`;
+            handleChapterSelectChange();
+        }
+
+        function handleChapterSelectChange() {
+            const val = document.getElementById('modal-select-chapter').value;
+            const newChapContainer = document.getElementById('new-chapter-input-container');
+            if (val === "NEW") {
+                newChapContainer.classList.remove('hidden');
+            } else {
+                newChapContainer.classList.add('hidden');
+            }
+        }
 
         async function saveNewExam() {
             const sIdx = document.getElementById('modal-select-subject').value;
@@ -843,6 +887,7 @@
             let subj = appData.subjects[sIdx];
             let processedCount = 0;
 
+            // TRƯỜNG HỢP 1: TẢI FOLDER (TỰ PHÂN LOẠI)
             if (folderInput.files && folderInput.files.length > 0) {
                 for (let file of folderInput.files) {
                     if (!file.name.endsWith('.docx')) continue;
@@ -884,12 +929,24 @@
                 }
             }
 
+            // TRƯỜNG HỢP 2: TẢI FILE ĐƠN LẺ VÀO CHƯƠNG ĐÃ CHỌN HOẶC TỰ TẠO MỚI
             if (fileInput.files && fileInput.files.length > 0) {
-                let targetChapter = subj.chapters.find(c => c.chapterName.toLowerCase() === "chương 1".toLowerCase());
-                if (!targetChapter) {
-                    targetChapter = { chapterName: "Chương 1", exams: [] };
+                let chapSelectVal = document.getElementById('modal-select-chapter').value;
+                let targetChapter = null;
+
+                if (chapSelectVal === "NEW") {
+                    let newChapName = document.getElementById('modal-input-new-chapter').value.trim();
+                    if (!newChapName) return alert('Vui lòng nhập tên chương mới!');
+                    targetChapter = { chapterName: newChapName, exams: [] };
                     subj.chapters.push(targetChapter);
+                } else {
+                    targetChapter = subj.chapters[parseInt(chapSelectVal)];
+                    if (!targetChapter) {
+                        targetChapter = { chapterName: "Chương 1", exams: [] };
+                        subj.chapters.push(targetChapter);
+                    }
                 }
+
                 for (let file of fileInput.files) {
                     try {
                         let arrayBuffer = await file.arrayBuffer();
@@ -907,7 +964,7 @@
                 }
             }
 
-            if (processedCount === 0) return alert('Không tìm thấy dữ liệu hợp lệ!');
+            if (processedCount === 0) return alert('Không tìm thấy dữ liệu hợp lệ hoặc chưa chọn file!');
 
             saveAppDataToCloud();
             closeCreateExamModal();
