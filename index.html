@@ -971,23 +971,18 @@
             alert(`Thành công! Đã nhập ${processedCount} bài học mới.`);
         }
 
-        // BỘ TÁCH CÂU HỎI THUẬT TOÁN REGEX MỚI (KHÔNG PHỤ THUỘC VÀO XUỐNG DÒNG CỦA WORD)
+        // BỘ TÁCH CÂU HỎI THUẬT TOÁN TỐI ƯU TUYỆT ĐỐI
         function parseBulkQuestions(text) {
             if (!text) return [];
 
-            // Chuẩn hóa văn bản
             let rawText = text.replace(/\r\n/g, ' ').replace(/\n/g, ' ').replace(/\r/g, ' ');
-
-            // Tách thành từng khối câu hỏi bắt đầu bằng Q: hoặc Q <số>. hoặc Câu <số>.
             let blocks = rawText.split(/(?=(?:Q\s*[:\.]|Q\s*\d+[\.:]|Câu\s*\d+[\.:]|Question\s*\d+[\.:]))/i);
-
             let questions = [];
 
             blocks.forEach(block => {
                 block = block.trim();
                 if (!block) return;
 
-                // Regex quét toàn bộ thông tin câu hỏi
                 let match = block.match(/^(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:])?\s*(.*?)(?=\s*A[\.\)\:]\s*)(.*?)(?=\s*B[\.\)\:]\s*)(.*?)(?=\s*C[\.\)\:]\s*)(.*?)(?=\s*D[\.\)\:]\s*)(.*?)(?=\s*(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|ĐA\s*[:\.]|\*?[A-D][\.\)\:]|$))(?:(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|ĐA\s*[:\.]|\*?[A-D][\.\)\:])\s*([A-D])[\.\)\:]?\s*)?(?:(?:E\s*[:\.]|Exp\s*[:\.]|Explanation\s*[:\.]|Giải\s*thích\s*[:\.]|\*)\s*(.*))?$/i);
 
                 if (match) {
@@ -997,7 +992,6 @@
                     let optC = "C. " + match[4].replace(/^C[\.\)\:]\s*/i, '').trim();
                     let optDText = match[5].trim();
                     
-                    // Xử lý cắt bớt phần A: hoặc E: nếu nó còn nằm dính ở cuối optDText
                     optDText = optDText.replace(/\s*(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|E\s*[:\.]|Giải\s*thích\s*[:\.]).*/i, '').trim();
                     let optD = "D. " + optDText.replace(/^D[\.\)\:]\s*/i, '').trim();
 
@@ -1011,7 +1005,7 @@
                         questions.push({
                             id: questions.length + 1,
                             questionText: qText,
-                            options: [optA, optB, optC, opt optD],
+                            options: [optA, optB, optC, optD],
                             correctAnswer: correctIdx,
                             explanation: expText
                         });
@@ -1019,7 +1013,6 @@
                 }
             });
 
-            // Nếu cách trên không bắt được (do định dạng lạ), dùng thuật toán dự phòng quét theo cặp ký tự
             if (questions.length === 0) {
                 let fallbackMatches = rawText.matchAll(/(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?)\s*(.*?)\s*A[\.\)\:]\s*(.*?)\s*B[\.\)\:]\s*(.*?)\s*C[\.\)\:]\s*(.*?)\s*D[\.\)\:]\s*(.*?)\s*A\s*[:\.]\s*([A-D])\s*(?:E\s*[:\.]\s*(.*?))?(?=(?:Q\s*[:\.]|Câu\s*\d+[\.:]|$))/gi);
                 for (let m of fallbackMatches) {
