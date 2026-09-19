@@ -145,6 +145,23 @@ window.vmuSetSyncStatus = function(status, message) {
 })();
 </script>
 
+
+<script id="VMU_ADMIN_ONLY_GUARD_V1">
+(function(){
+  try{
+    const raw = localStorage.getItem("vmu_current_user");
+    if(raw){
+      const u = JSON.parse(raw);
+      if(!u || u.role !== "admin" || String(u.username).toLowerCase() !== "admin"){
+        localStorage.removeItem("vmu_current_user");
+      }
+    }
+  }catch(e){
+    localStorage.removeItem("vmu_current_user");
+  }
+})();
+</script>
+
 </head>
 
 <!-- VMU_SYNC_MODEL_DOCUMENTED:
@@ -153,6 +170,14 @@ window.vmuSetSyncStatus = function(status, message) {
      Manual "Đồng bộ Firebase" pulls the latest cloud snapshot.
      Local cache is retained only as a fallback and is never treated as newer
      than Firebase merely because the page was opened on another device.
+-->
+
+
+<!-- VMU ADMIN-ONLY BUILD:
+     - Chỉ tài khoản admin đăng nhập.
+     - Không còn đăng ký/member/duyệt user.
+     - Bộ đề Firebase users/my_data được giữ nguyên.
+     - users_data/admin chỉ dùng cho danh sách câu sai của Admin.
 -->
 
 <body class="bg-[#FFF5F8] text-slate-800 font-sans antialiased min-h-screen flex flex-col">
@@ -172,9 +197,6 @@ window.vmuSetSyncStatus = function(status, message) {
             <nav class="flex items-center flex-wrap gap-2 md:gap-4">
                 <button onclick="switchTab('home')" id="nav-home" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-[#FF4081] transition"><i class="fa-solid fa-house mr-1"></i> Trang chủ</button>
                 <button onclick="switchTab('mistakes')" id="nav-mistakes" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-[#FF4081] transition relative"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Ôn câu sai <span id="badge-mistakes" class="ml-1 bg-[#FF4081] text-white text-xs px-2 py-0.5 rounded-full font-bold hidden">0</span></button>
-<button onclick="openUsersModal()" id="nav-users-btn" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-[#FF4081] hover:bg-[#D6336C] transition hidden flex items-center">
-                    <i class="fa-solid fa-users-gear mr-1"></i> Duyệt Users
-                </button>
 
                 <div class="flex items-center space-x-2 bg-[#b52658]/50 px-3 py-1.5 rounded-xl border border-[#FFB6C1]/40 text-sm">
                     <i class="fa-solid fa-user-shield text-[#FFB6C1]" id="user-role-icon"></i>
@@ -283,7 +305,7 @@ window.vmuSetSyncStatus = function(status, message) {
             <div class="text-center space-y-2">
                 <div class="bg-[#FFF5F8] text-[#D6336C] w-12 h-12 rounded-2xl flex items-center justify-center mx-auto text-xl font-bold"><i class="fa-solid fa-stethoscope"></i></div>
                 <h3 class="text-2xl font-bold text-slate-900">VMU TestExam Pro</h3>
-                <p class="text-sm text-slate-500">Đăng nhập tài khoản cá nhân</p>
+                <p class="text-sm text-slate-500">Đăng nhập Admin để quản lý bộ đề</p>
             </div>
 
             <div class="space-y-4 text-sm">
@@ -300,25 +322,10 @@ window.vmuSetSyncStatus = function(status, message) {
 
             <div class="space-y-3">
                 <button onclick="handleLogin()" class="w-full bg-[#D6336C] hover:bg-[#FF4081] text-white py-3 rounded-xl font-bold text-sm transition shadow-sm">Đăng Nhập</button>
-                <button onclick="handleRegister()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold text-sm transition">Đăng Ký Tài Khoản Mới</button>
             </div>
         </div>
     </div>
-
-    <div id="modal-users" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
-        <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
-            <div class="flex justify-between items-center border-b pb-3">
-                <h3 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-users-gear text-[#D6336C] mr-2"></i> Phê Duyệt Thành Viên</h3>
-                <button onclick="closeUsersModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
-            </div>
-            <div id="users-list-container" class="space-y-3"></div>
-            <div class="flex justify-end pt-2 border-t">
-                <button onclick="closeUsersModal()" class="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium">Đóng</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="modal-subject" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+<div id="modal-subject" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <h3 class="text-lg font-bold text-slate-900">Thêm Môn Học Mới</h3>
             <input type="text" id="input-new-subject" placeholder="Nhập tên môn học..." class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C] text-sm">
@@ -431,200 +438,117 @@ window.vmuSetSyncStatus = function(status, message) {
         let collapsedChapters = {};
         let renameTarget = null;
         let appDataUnsub = null;
-        let usersUnsub = null;
 
+        const ADMIN_PASSWORD = "212696";
+
+        // ============================================================
+        // ADMIN ONLY
+        // ============================================================
+        // Web cá nhân: chỉ có một tài khoản ADMIN.
+        // Bộ đề vẫn nằm trong users/my_data và không bị thay đổi.
+        // Không còn đăng ký / member / duyệt user.
+        // ============================================================
+
+        const ADMIN_USERNAME = "admin";
         const ADMIN_PASSWORD = "212696";
 
         window.initAppSession = async function() {
             let session = localStorage.getItem("vmu_current_user");
+
             if (session) {
-                try { currentUser = JSON.parse(session); } catch(e) {}
+                try {
+                    const saved = JSON.parse(session);
+
+                    // Không cho session member/user cũ truy cập nữa.
+                    if (saved && saved.role === "admin" && saved.username === ADMIN_USERNAME) {
+                        currentUser = saved;
+                    } else {
+                        localStorage.removeItem("vmu_current_user");
+                        currentUser = null;
+                    }
+                } catch (e) {
+                    localStorage.removeItem("vmu_current_user");
+                    currentUser = null;
+                }
             }
 
             if (!currentUser) {
                 document.getElementById('modal-auth').classList.remove('hidden');
-            } else {
-                document.getElementById('modal-auth').classList.add('hidden');
-                updateNavbarUser();
-                startAppDataRealtimeSync();
-                await loadUserPersonalData();
+                return;
             }
+
+            document.getElementById('modal-auth').classList.add('hidden');
+            updateNavbarUser();
+            startAppDataRealtimeSync();
+            await loadUserPersonalData();
         };
 
         function updateNavbarUser() {
-            document.getElementById('nav-username').innerText = currentUser.username;
+            if (!currentUser) return;
+
+            document.getElementById('nav-username').innerText = "Admin";
+
             const icon = document.getElementById('user-role-icon');
-            const usersBtn = document.getElementById('nav-users-btn');
             const adminBtns = document.getElementById('admin-action-buttons');
             const adminDataMenu = document.getElementById('admin-data-menu');
 
-            if (currentUser.role === 'admin') {
-                icon.className = "fa-solid fa-user-shield text-[#FFB6C1]";
-                usersBtn.classList.remove('hidden');
-                adminBtns.classList.remove('hidden');
-                adminDataMenu.classList.remove('hidden');
-            } else {
-                icon.className = "fa-solid fa-user text-emerald-300";
-                usersBtn.classList.add('hidden');
-                adminBtns.classList.add('hidden');
-                adminDataMenu.classList.add('hidden');
-            }
+            icon.className = "fa-solid fa-user-shield text-[#FFB6C1]";
+            adminBtns.classList.remove('hidden');
+            adminDataMenu.classList.remove('hidden');
         }
 
         async function handleLogin() {
-            let user = document.getElementById('auth-username').value.trim();
-            let pass = document.getElementById('auth-password').value;
-            let errEl = document.getElementById('auth-error-msg');
+            const user = document.getElementById('auth-username').value.trim();
+            const pass = document.getElementById('auth-password').value;
+            const errEl = document.getElementById('auth-error-msg');
+
             errEl.classList.add('hidden');
 
             if (!user || !pass) {
-                errEl.innerText = "Vui lòng nhập đầy đủ tên và mật khẩu!";
+                errEl.innerText = "Vui lòng nhập username và mật khẩu!";
                 errEl.classList.remove('hidden');
                 return;
             }
 
-            if (user.toLowerCase() === 'admin' || pass === ADMIN_PASSWORD) {
-                if (pass === ADMIN_PASSWORD) {
-                    currentUser = { username: user, role: 'admin', status: 'approved' };
-                    localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
-                    document.getElementById('modal-auth').classList.add('hidden');
-                    updateNavbarUser();
-                    startAppDataRealtimeSync();
-                    await loadUserPersonalData();
-                    return;
-                }
+            // CHỈ CHO ADMIN.
+            if (user.toLowerCase() !== ADMIN_USERNAME || pass !== ADMIN_PASSWORD) {
+                errEl.innerText = "Sai username hoặc mật khẩu Admin!";
+                errEl.classList.remove('hidden');
+                return;
             }
+
+            currentUser = {
+                username: ADMIN_USERNAME,
+                role: 'admin',
+                status: 'approved'
+            };
+
+            localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
+
+            document.getElementById('modal-auth').classList.add('hidden');
+            updateNavbarUser();
 
             try {
-                if (window.firebaseDB) {
-                    let docRef = window.firebaseDoc(window.firebaseDB, "users_list", user);
-                    let snap = await window.firebaseGetDoc(docRef);
-                    if (snap.exists()) {
-                        let data = snap.data();
-                        if (data.password === pass) {
-                            if (data.status !== 'approved') {
-                                errEl.innerText = "Tài khoản của bạn đang chờ Admin phê duyệt!";
-                                errEl.classList.remove('hidden');
-                                return;
-                            }
-                            currentUser = { username: user, role: 'member', status: 'approved' };
-                            localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
-                            document.getElementById('modal-auth').classList.add('hidden');
-                            updateNavbarUser();
-                            startAppDataRealtimeSync();
-                            await loadUserPersonalData();
-                            return;
-                        }
-                    }
-                }
-            } catch(e) {}
-
-            errEl.innerText = "Sai tên đăng nhập, mật khẩu hoặc chưa được duyệt!";
-            errEl.classList.remove('hidden');
-        }
-
-        async function handleRegister() {
-            let user = document.getElementById('auth-username').value.trim();
-            let pass = document.getElementById('auth-password').value;
-            let errEl = document.getElementById('auth-error-msg');
-            errEl.classList.add('hidden');
-
-            if (!user || !pass) {
-                errEl.innerText = "Vui lòng nhập đầy đủ tên và mật khẩu!";
-                errEl.classList.remove('hidden');
-                return;
-            }
-
-            if (user.toLowerCase() === 'admin') {
-                errEl.innerText = "Tên tài khoản không hợp lệ!";
-                errEl.classList.remove('hidden');
-                return;
-            }
-
-            try {
-                if (window.firebaseDB) {
-                    let docRef = window.firebaseDoc(window.firebaseDB, "users_list", user);
-                    let snap = await window.firebaseGetDoc(docRef);
-                    if (snap.exists()) {
-                        errEl.innerText = "Tên đăng nhập đã tồn tại!";
-                        errEl.classList.remove('hidden');
-                        return;
-                    }
-                    await window.firebaseSetDoc(docRef, { username: user, password: pass, status: 'pending', role: 'member' });
-                    alert('Đăng ký thành công! Vui lòng chờ Admin phê duyệt.');
-                }
-            } catch(e) {
-                alert('Lỗi kết nối Cloud!');
+                await startAppDataRealtimeSync();
+                await loadUserPersonalData();
+            } catch (e) {
+                console.error("[ADMIN LOGIN] Firebase init:", e);
             }
         }
 
         function logoutAccount() {
-            if (appDataUnsub) appDataUnsub();
+            try {
+                if (appDataUnsub) appDataUnsub();
+            } catch (e) {}
+
+            appDataUnsub = null;
             localStorage.removeItem("vmu_current_user");
             currentUser = null;
+
             document.getElementById('auth-username').value = '';
             document.getElementById('auth-password').value = '';
             document.getElementById('modal-auth').classList.remove('hidden');
         }
-
-        function openUsersModal() {
-            if (!currentUser || currentUser.role !== 'admin') return;
-            const container = document.getElementById('users-list-container');
-            container.innerHTML = `<p class="text-sm text-slate-400 text-center py-4">Đang kết nối Realtime...</p>`;
-            document.getElementById('modal-users').classList.remove('hidden');
-
-            if (usersUnsub) usersUnsub();
-
-            try {
-                if (window.firebaseDB) {
-                    let colRef = window.firebaseCollection(window.firebaseDB, "users_list");
-                    usersUnsub = window.firebaseOnSnapshot(colRef, (querySnap) => {
-                        let html = '';
-                        querySnap.forEach((docSnap) => {
-                            let u = docSnap.data();
-                            let isPending = u.status === 'pending';
-                            html += `
-                                <div class="bg-slate-50 p-4 rounded-xl border flex justify-between items-center" id="user-row-${u.username}">
-                                    <div>
-                                        <h4 class="font-bold text-slate-800">${u.username}</h4>
-                                        <span class="text-xs px-2 py-0.5 rounded-full font-semibold ${isPending ? 'bg-[#FFF5F8] text-[#D6336C]' : 'bg-emerald-100 text-emerald-800'}" id="user-status-${u.username}">${isPending ? 'Chờ duyệt' : 'Đã duyệt'}</span>
-                                    </div>
-                                    <div class="space-x-2">
-                                        ${isPending ? `<button onclick="approveUser('${u.username}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">Phê duyệt</button>` : ''}
-                                        <button onclick="deleteUser('${u.username}')" class="bg-rose-100 hover:bg-rose-200 text-rose-700 px-3 py-1.5 rounded-lg text-xs font-bold transition">Xóa</button>
-                                    </div>
-                                </div>
-                            `;
-                        });
-                        container.innerHTML = html || `<p class="text-sm text-slate-400 text-center py-4">Chưa có thành viên nào.</p>`;
-                    });
-                }
-            } catch(e) {
-                container.innerHTML = `<p class="text-sm text-rose-500 text-center py-4">Lỗi kết nối Realtime.</p>`;
-            }
-        }
-
-        function closeUsersModal() { 
-            if (usersUnsub) { usersUnsub(); usersUnsub = null; }
-            document.getElementById('modal-users').classList.add('hidden'); 
-        }
-
-        async function approveUser(username) {
-            try {
-                if (window.firebaseDB) {
-                    let docRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
-                    await window.firebaseSetDoc(docRef, { status: 'approved' }, { merge: true });
-                }
-            } catch(e) {}
-        }
-
-        async function deleteUser(username) {
-            if (confirm(`Xóa user ${username}?`)) {
-                try {
-                    if (window.firebaseDB) {
-                        let docRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
-                        await window.firebaseDeleteDoc(docRef);
-                    }
                 } catch(e) {}
             }
         }
@@ -1508,8 +1432,8 @@ window.vmuSetSyncStatus = function(status, message) {
         async function loadUserPersonalData() {
             if (!currentUser || !currentUser.username) return;
 
-            const userKey = currentUser.username;
-            const localKey = "vmu_personal_" + userKey;
+            const userKey = "admin";
+            const localKey = "vmu_personal_admin";
             let localPersonalData = null;
 
             try {
@@ -1564,8 +1488,8 @@ window.vmuSetSyncStatus = function(status, message) {
         async function saveUserPersonalData(silent = false) {
             if (!currentUser || !currentUser.username) return false;
 
-            const userKey = currentUser.username;
-            const localKey = "vmu_personal_" + userKey;
+            const userKey = "admin";
+            const localKey = "vmu_personal_admin";
 
             userPersonalData = {
                 mistakes: Array.isArray(userPersonalData.mistakes)
