@@ -40,7 +40,7 @@
         window.firebaseUpdateDoc = updateDoc;
         window.firebaseOnSnapshot = onSnapshot;
 
-        // Khởi chạy ứng dụng khi Firebase đã sẵn sàng
+        // Khởi chạy ứng dụng khi DOM đã sẵn sàng
         window.addEventListener('DOMContentLoaded', () => {
             if (typeof window.initAppSession === 'function') {
                 window.initAppSession();
@@ -52,9 +52,9 @@
 
     <!-- Navbar -->
     <header class="bg-[#D6336C] text-white shadow-md sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-2">
             <div class="flex items-center space-x-3 cursor-pointer" onclick="switchTab('home')">
-                <div class="bg-white text-[#D6336C] p-2 rounded-xl font-bold text-xl shadow">
+                <div class="bg-white text-[#D6336C] p-2 rounded-xl font-bold text-xl shadow shrink-0">
                     <i class="fa-solid fa-stethoscope"></i>
                 </div>
                 <div>
@@ -62,9 +62,9 @@
                     <p class="text-xs text-[#FFB6C1]">Hệ thống tryhard giật HỌC BỔNG của npct</p>
                 </div>
             </div>
-            <nav class="flex items-center space-x-2 md:space-x-4">
+            <nav class="flex items-center flex-wrap gap-2 md:gap-4">
                 <button onclick="switchTab('home')" id="nav-home" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-[#FF4081] transition"><i class="fa-solid fa-house mr-1"></i> Trang chủ</button>
-                <button onclick="switchTab('mistakes')" id="nav-mistakes" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-[#FF4081] transition relative"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Ôn câu sai <span id="badge-mistakes" class="absolute -top-1 -right-1 bg-[#FF4081] text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold hidden">0</span></button>
+                <button onclick="switchTab('mistakes')" id="nav-mistakes" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-[#FF4081] transition relative"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Ôn câu sai <span id="badge-mistakes" class="ml-1 bg-[#FF4081] text-white text-xs px-2 py-0.5 rounded-full font-bold hidden">0</span></button>
                 <button onclick="switchTab('habit')" id="nav-habit" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-[#FF4081] transition"><i class="fa-solid fa-calendar-check mr-1"></i> Habit Tracker</button>
                 
                 <button onclick="openUsersModal()" id="nav-users-btn" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-[#FF4081] hover:bg-[#D6336C] transition hidden flex items-center">
@@ -495,7 +495,6 @@
             try {
                 if (window.firebaseDB) {
                     let colRef = window.firebaseCollection(window.firebaseDB, "users_list");
-                    // LẮNG NGHE REALTIME DANH SÁCH USER
                     usersUnsub = window.firebaseOnSnapshot(colRef, (querySnap) => {
                         let html = '';
                         querySnap.forEach((docSnap) => {
@@ -547,7 +546,7 @@
             }
         }
 
-        // ĐỒNG BỘ REALTIME TỨC THÌ TRONG DƯỚI 1 GIÂY BẰNG ONSNAPSHOT
+        // ĐỒNG BỘ REALTIME TỨC THÌ BẰNG ONSNAPSHOT - CÓ HIỂN THỊ CACHE TRƯỚC NÊN KHÔNG LO BỊ TRẮNG MÀN HÌNH
         function startAppDataRealtimeSync() {
             let localData = localStorage.getItem("vmu_local_exam_backup");
             if (localData) {
@@ -744,7 +743,6 @@
                                         ` : ''}
                                     </div>
                                 </div>
-                                <!-- GRID CÁC Ô ĐỀ THI NGẮN GỌN HƠN ĐỂ TIẾT KIỆM DIỆN TÍCH -->
                                 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 pl-2 pt-2 ${isChapCollapsed ? 'hidden' : ''}">
                         `;
 
@@ -898,7 +896,6 @@
             }
         }
 
-        // HÀM TẢI FILE WORD / FOLDER DỰÁ TRÊN MAMMOTH.JS
         async function saveNewExam() {
             const sIdx = document.getElementById('modal-select-subject').value;
             const folderInput = document.getElementById('modal-input-folder');
@@ -995,7 +992,6 @@
             alert(`Thành công! Đã nhập ${processedCount} bài học mới.`);
         }
 
-        // BỘ TÁCH CÂU HỎI THUẬT TOÁN TỐI ƯU
         function parseBulkQuestions(text) {
             if (!text) return [];
 
@@ -1104,7 +1100,6 @@
                     </div>
                 </div>
                 <h4 class="text-slate-900 font-bold text-lg leading-relaxed">${q.questionText}</h4>
-                <!-- ĐỔI DẠNG Ô NGẮN HƠN THAY VÌ HÌNH CHỮ NHẬT DÀI FULL-WIDTH -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
             `;
 
