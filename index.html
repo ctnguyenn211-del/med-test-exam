@@ -55,7 +55,11 @@
                 <button onclick="switchTab('mistakes')" id="nav-mistakes" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-red-800 transition relative"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Ôn câu sai <span id="badge-mistakes" class="absolute -top-1 -right-1 bg-amber-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold hidden">0</span></button>
                 <button onclick="switchTab('habit')" id="nav-habit" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-red-800 transition"><i class="fa-solid fa-calendar-check mr-1"></i> Habit Tracker</button>
                 
-                <!-- Backup Menu -->
+                <!-- Nút Admin Toggle -->
+                <button onclick="toggleAdminMode()" id="nav-admin-btn" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-900/40 hover:bg-slate-900/60 transition border border-red-600/50 flex items-center">
+                    <i id="admin-icon" class="fa-solid fa-lock text-amber-400 mr-1.5"></i> <span id="admin-btn-text">Admin</span>
+                </button>
+
                 <div class="relative group">
                     <button class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-red-800 transition"><i class="fa-solid fa-database mr-1"></i> Dữ liệu</button>
                     <div class="absolute right-0 mt-1 w-48 bg-white text-slate-700 rounded-lg shadow-xl py-2 hidden group-hover:block border border-slate-100 z-50">
@@ -73,14 +77,15 @@
     <!-- Main Container -->
     <main class="flex-grow max-w-7xl w-full mx-auto p-4 md:p-6">
         
-        <!-- TAB 1: TRANG CHỦ & QUẢN LÝ -->
+        <!-- TAB 1: TRANG CHỦ -->
         <div id="tab-home" class="space-y-6">
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                 <div>
                     <h2 class="text-2xl font-bold text-slate-900">Danh Sách Môn Học & Đề Thi</h2>
-                    <p class="text-sm text-slate-500">Dữ liệu được tự động lưu trữ và đồng bộ hóa qua Cloud Firestore.</p>
+                    <p class="text-sm text-slate-500">Lựa chọn bài học để bắt đầu luyện đề y khoa.</p>
                 </div>
-                <div class="flex flex-wrap gap-2">
+                <!-- Các nút Admin chỉ hiện khi đăng nhập Admin -->
+                <div id="admin-action-buttons" class="flex flex-wrap gap-2 hidden">
                     <button onclick="openSubjectModal()" class="bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-xl text-sm font-medium transition shadow-sm flex items-center">
                         <i class="fa-solid fa-plus mr-2"></i> Thêm Môn Học
                     </button>
@@ -90,13 +95,10 @@
                 </div>
             </div>
 
-            <!-- Danh sách Môn Học & Chương -->
-            <div id="subjects-container" class="space-y-4">
-                <!-- Render bằng Javascript -->
-            </div>
+            <div id="subjects-container" class="space-y-4"></div>
         </div>
 
-        <!-- TAB 2: GIAO DIỆN LÀM BÀI THI / LUYỆN TẬP -->
+        <!-- TAB 2: LÀM BÀI THI -->
         <div id="tab-exam" class="hidden space-y-6">
             <div class="flex items-center justify-between bg-white px-6 py-4 rounded-2xl shadow-sm border border-slate-100">
                 <button onclick="switchTab('home')" class="text-slate-600 hover:text-red-700 font-medium text-sm flex items-center transition">
@@ -107,79 +109,38 @@
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                <!-- CỘT TRÁI: KẾT QUẢ & TÙY CHỈNH -->
                 <div class="space-y-6 lg:col-span-1">
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
                         <h4 class="font-bold text-slate-800 text-sm uppercase tracking-wider border-b pb-2"><i class="fa-solid fa-chart-pie mr-2 text-red-600"></i> Kết quả</h4>
                         <div class="space-y-3 text-sm">
-                            <div class="flex justify-between">
-                                <span class="text-slate-500">Đã hoàn thành:</span>
-                                <span id="stat-completed" class="font-bold text-slate-800">0/0</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-slate-500">Đúng:</span>
-                                <span id="stat-correct" class="font-bold text-emerald-600">0</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-slate-500">Điểm:</span>
-                                <span id="stat-score" class="font-bold text-red-600 text-base">0.00</span>
-                            </div>
+                            <div class="flex justify-between"><span class="text-slate-500">Đã hoàn thành:</span><span id="stat-completed" class="font-bold text-slate-800">0/0</span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">Đúng:</span><span id="stat-correct" class="font-bold text-emerald-600">0</span></div>
+                            <div class="flex justify-between"><span class="text-slate-500">Điểm:</span><span id="stat-score" class="font-bold text-red-600 text-base">0.00</span></div>
                         </div>
                     </div>
 
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
                         <h4 class="font-bold text-slate-800 text-sm uppercase tracking-wider border-b pb-2"><i class="fa-solid fa-gear mr-2 text-slate-600"></i> Tùy chỉnh</h4>
                         <div class="space-y-4 text-sm">
-                            <div class="flex items-center justify-between">
-                                <span class="text-slate-600">Hiện đáp án ngay:</span>
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" id="setting-show-answer" class="sr-only peer" checked onchange="toggleSettingShowAnswer(this)">
-                                    <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
-                                </label>
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <span class="text-slate-600">Tự động chuyển câu:</span>
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" id="setting-auto-next" class="sr-only peer" onchange="toggleSettingAutoNext(this)">
-                                    <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
-                                </label>
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <span class="text-slate-600">Đảo câu hỏi:</span>
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" id="setting-shuffle-q" class="sr-only peer" onchange="toggleShuffleQuestions(this)">
-                                    <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
-                                </label>
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <span class="text-slate-600">Đảo đáp án:</span>
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" id="setting-shuffle-a" class="sr-only peer" onchange="toggleShuffleAnswers(this)">
-                                    <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
-                                </label>
-                            </div>
+                            <div class="flex items-center justify-between"><span class="text-slate-600">Hiện đáp án ngay:</span><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" id="setting-show-answer" class="sr-only peer" checked onchange="toggleSettingShowAnswer(this)"><div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div></label></div>
+                            <div class="flex items-center justify-between"><span class="text-slate-600">Tự động chuyển câu:</span><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" id="setting-auto-next" class="sr-only peer" onchange="toggleSettingAutoNext(this)"><div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div></label></div>
+                            <div class="flex items-center justify-between"><span class="text-slate-600">Đảo câu hỏi:</span><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" id="setting-shuffle-q" class="sr-only peer" onchange="toggleShuffleQuestions(this)"><div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div></label></div>
+                            <div class="flex items-center justify-between"><span class="text-slate-600">Đảo đáp án:</span><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" id="setting-shuffle-a" class="sr-only peer" onchange="toggleShuffleAnswers(this)"><div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div></label></div>
                         </div>
                     </div>
 
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-                        <h4 class="font-bold text-slate-800 text-sm uppercase tracking-wider border-b pb-2"><i class="fa-solid fa-list-ol mr-2 text-slate-600"></i> Mục lục câu hỏi</h4>
+                        <h4 class="font-bold text-slate-800 text-sm uppercase tracking-wider border-b pb-2"><i class="fa-solid fa-list-ol mr-2 text-slate-600"></i> Mục lục</h4>
                         <div id="question-palette" class="grid grid-cols-5 gap-2 max-h-64 overflow-y-auto p-1"></div>
                     </div>
                 </div>
 
-                <!-- CỘT PHẢI: NỘI DUNG CÂU HỎI -->
                 <div class="lg:col-span-3 space-y-6">
                     <div id="question-container" class="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-100 space-y-6"></div>
                     <div class="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                        <button onclick="prevQuestion()" id="btn-prev" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-2.5 rounded-xl font-medium text-sm transition flex items-center">
-                            <i class="fa-solid fa-arrow-left mr-2"></i> Câu trước
-                        </button>
-                        <button onclick="markUnsure()" class="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-5 py-2.5 rounded-xl font-medium text-sm transition">
-                            Phân vân
-                        </button>
-                        <button onclick="nextQuestion()" id="btn-next" class="bg-red-700 hover:bg-red-800 text-white px-5 py-2.5 rounded-xl font-medium text-sm transition flex items-center">
-                            Câu sau <i class="fa-solid fa-arrow-right ml-2"></i>
-                        </button>
+                        <button onclick="prevQuestion()" id="btn-prev" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-2.5 rounded-xl font-medium text-sm transition flex items-center"><i class="fa-solid fa-arrow-left mr-2"></i> Câu trước</button>
+                        <button onclick="markUnsure()" class="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-5 py-2.5 rounded-xl font-medium text-sm transition">Phân vân</button>
+                        <button onclick="nextQuestion()" id="btn-next" class="bg-red-700 hover:bg-red-800 text-white px-5 py-2.5 rounded-xl font-medium text-sm transition flex items-center">Câu sau <i class="fa-solid fa-arrow-right ml-2"></i></button>
                     </div>
                 </div>
             </div>
@@ -188,13 +149,8 @@
         <!-- TAB 3: ÔN TẬP CÂU SAI -->
         <div id="tab-mistakes" class="hidden space-y-6">
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center">
-                <div>
-                    <h2 class="text-2xl font-bold text-slate-900">Sổ Tay Ôn Tập Câu Sai</h2>
-                    <p class="text-sm text-slate-500">Tổng hợp các câu trả lời sai từ các bài thi.</p>
-                </div>
-                <button onclick="startMistakeReview()" id="btn-review-mistakes" class="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-xl font-medium text-sm transition shadow-sm flex items-center">
-                    <i class="fa-solid fa-rotate-right mr-2"></i> Luyện tập lại câu sai
-                </button>
+                <div><h2 class="text-2xl font-bold text-slate-900">Sổ Tay Ôn Tập Câu Sai</h2><p class="text-sm text-slate-500">Tổng hợp các câu trả lời sai từ các bài thi.</p></div>
+                <button onclick="startMistakeReview()" id="btn-review-mistakes" class="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-xl font-medium text-sm transition shadow-sm flex items-center"><i class="fa-solid fa-rotate-right mr-2"></i> Luyện tập lại câu sai</button>
             </div>
             <div id="mistakes-container" class="space-y-4"></div>
         </div>
@@ -203,10 +159,7 @@
         <div id="tab-habit" class="hidden space-y-6">
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                 <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                    <div>
-                        <h2 class="text-2xl font-bold text-slate-900">Habit Tracker - Tiến Độ Học Tập</h2>
-                        <p class="text-sm text-slate-500">Duy trì thói quen luyện đề mỗi ngày.</p>
-                    </div>
+                    <div><h2 class="text-2xl font-bold text-slate-900">Habit Tracker - Tiến Độ Học Tập</h2><p class="text-sm text-slate-500">Duy trì thói quen luyện đề mỗi ngày.</p></div>
                     <div class="flex items-center gap-4 bg-red-50 px-4 py-3 rounded-2xl border border-red-100">
                         <div class="text-red-600 text-2xl font-bold"><i class="fa-solid fa-fire text-amber-500 mr-2"></i><span id="streak-count">0</span> ngày</div>
                         <div class="text-xs text-red-700 font-medium">Chuỗi Streak liên tiếp</div>
@@ -216,6 +169,19 @@
             </div>
         </div>
     </main>
+
+    <!-- MODAL: ĐĂNG NHẬP ADMIN -->
+    <div id="modal-admin-login" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <h3 class="text-lg font-bold text-slate-900 flex items-center"><i class="fa-solid fa-lock text-red-600 mr-2"></i> Đăng nhập Admin</h3>
+            <p class="text-xs text-slate-500">Nhập mật khẩu quản trị để mở khóa quyền thêm/sửa/xóa đề thi.</p>
+            <input type="password" id="input-admin-pass" placeholder="Nhập mật khẩu..." class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600 text-sm">
+            <div class="flex justify-end space-x-3 pt-2">
+                <button onclick="closeAdminModal()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-sm font-medium">Hủy</button>
+                <button onclick="verifyAdminPassword()" class="bg-red-700 hover:bg-red-800 text-white px-5 py-2 rounded-xl text-sm font-medium">Xác nhận</button>
+            </div>
+        </div>
+    </div>
 
     <!-- MODAL: THÊM MÔN HỌC -->
     <div id="modal-subject" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
@@ -229,7 +195,7 @@
         </div>
     </div>
 
-    <!-- MODAL: TẠO ĐỀ / DÁN HÀNG LOẠT / UPLOAD WORD -->
+    <!-- MODAL: TẠO ĐỀ / DÁN ĐỀ -->
     <div id="modal-exam" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center border-b pb-3">
@@ -267,20 +233,87 @@
         </div>
     </div>
 
-    <!-- Script xử lý logic & Cloud Sync -->
-    <script>
-        let appData = {
-            subjects: [],
-            mistakes: [],
-            habits: {}
-        };
+    <!-- MODAL: SỬA CÂU HỎI -->
+    <div id="modal-edit-question" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b pb-3">
+                <h3 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-pen-to-square text-red-600 mr-2"></i> Sửa Câu Hỏi Hiện Tại</h3>
+                <button onclick="closeEditQuestionModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="space-y-3 text-sm">
+                <div>
+                    <label class="block font-medium text-slate-700 mb-1">Nội dung câu hỏi</label>
+                    <textarea id="edit-q-text" rows="3" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600"></textarea>
+                </div>
+                <div><label class="block font-medium text-slate-700 mb-1">Đáp án A</label><input type="text" id="edit-opt-0" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600"></div>
+                <div><label class="block font-medium text-slate-700 mb-1">Đáp án B</label><input type="text" id="edit-opt-1" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600"></div>
+                <div><label class="block font-medium text-slate-700 mb-1">Đáp án C</label><input type="text" id="edit-opt-2" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600"></div>
+                <div><label class="block font-medium text-slate-700 mb-1">Đáp án D</label><input type="text" id="edit-opt-3" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600"></div>
+                <div>
+                    <label class="block font-medium text-slate-700 mb-1">Đáp án đúng</label>
+                    <select id="edit-correct-ans" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600">
+                        <option value="0">A</option><option value="1">B</option><option value="2">C</option><option value="3">D</option>
+                    </select>
+                </div>
+                <div><label class="block font-medium text-slate-700 mb-1">Giải thích chi tiết</label><textarea id="edit-explanation" rows="2" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600"></textarea></div>
+            </div>
+            <div class="flex justify-end space-x-3 pt-2 border-t">
+                <button onclick="closeEditQuestionModal()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-sm font-medium">Hủy</button>
+                <button onclick="saveEditedQuestion()" class="bg-red-700 hover:bg-red-800 text-white px-5 py-2 rounded-xl text-sm font-medium">Lưu thay đổi</button>
+            </div>
+        </div>
+    </div>
 
+    <!-- Script xử lý logic & Admin Mode -->
+    <script>
+        let appData = { subjects: [], mistakes: [], habits: {} };
         let currentExam = null;
+        let currentExamRef = { sIdx: null, cIdx: null, eIdx: null };
         let currentQuestionIndex = 0;
         let userAnswers = {};
         let unsureQuestions = {};
         let settings = { showAnswer: true, autoNext: false, shuffleQ: false, shuffleA: false };
         let activeQuestions = [];
+        let collapsedSubjects = {};
+        let collapsedChapters = {};
+        let isAdmin = false; // Mặc định là khách/người làm đề
+
+        // Mật khẩu Admin mặc định (Bạn có thể đổi tùy ý tại đây)
+        const ADMIN_PASSWORD = "npct2026";
+
+        function toggleAdminMode() {
+            if (isAdmin) {
+                isAdmin = false;
+                document.getElementById('admin-icon').className = "fa-solid fa-lock text-amber-400 mr-1.5";
+                document.getElementById('admin-btn-text').innerText = "Admin";
+                document.getElementById('admin-action-buttons').classList.add('hidden');
+                renderHome();
+                alert('Đã khóa quyền Admin!');
+            } else {
+                document.getElementById('modal-admin-login').classList.remove('hidden');
+                document.getElementById('input-admin-pass').value = '';
+                document.getElementById('input-admin-pass').focus();
+            }
+        }
+
+        function closeAdminModal() {
+            document.getElementById('modal-admin-login').classList.add('hidden');
+        }
+
+        function verifyAdminPassword() {
+            let pass = document.getElementById('input-admin-pass').value;
+            if (pass === ADMIN_PASSWORD) {
+                isAdmin = true;
+                document.getElementById('admin-icon').className = "fa-solid fa-lock-open text-emerald-400 mr-1.5";
+                document.getElementById('admin-btn-text').innerText = "Admin (Đã mở)";
+                document.getElementById('admin-action-buttons').classList.remove('hidden');
+                closeAdminModal();
+                renderHome();
+                alert('Đăng nhập Admin thành công!');
+            } else {
+                alert('Mật khẩu Admin không chính xác!');
+            }
+        }
 
         async function loadDataFromCloud() {
             try {
@@ -316,9 +349,7 @@
                 renderHome();
                 updateMistakeBadge();
                 renderHabitTracker();
-            } catch (e) {
-                console.error("Lỗi tải dữ liệu từ Cloud:", e);
-            }
+            } catch (e) { console.error(e); }
         }
 
         async function saveDataToCloud() {
@@ -326,9 +357,7 @@
                 if (!window.firebaseDB) return;
                 const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
                 await window.firebaseSetDoc(docRef, appData);
-            } catch (e) {
-                console.error("Lỗi lưu dữ liệu lên Cloud:", e);
-            }
+            } catch (e) { console.error(e); }
             updateMistakeBadge();
         }
 
@@ -368,29 +397,48 @@
         function renderHome() {
             const container = document.getElementById('subjects-container');
             if (!appData.subjects || appData.subjects.length === 0) {
-                container.innerHTML = `<div class="bg-white p-8 rounded-2xl text-center text-slate-400">Chưa có môn học nào. Hãy bấm "Thêm Môn Học" để bắt đầu!</div>`;
+                container.innerHTML = `<div class="bg-white p-8 rounded-2xl text-center text-slate-400">Chưa có môn học nào.</div>`;
                 return;
             }
 
             let html = '';
             appData.subjects.forEach((subj, sIdx) => {
+                let isSubjCollapsed = collapsedSubjects[sIdx];
                 html += `
                     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
                         <div class="bg-slate-50 px-6 py-4 flex justify-between items-center border-b border-slate-100">
-                            <h3 class="font-bold text-slate-900 text-lg flex items-center"><i class="fa-solid fa-book-medical text-red-600 mr-2"></i> ${subj.name}</h3>
-                            <button onclick="deleteSubject(${sIdx})" class="text-slate-400 hover:text-red-600 p-1 text-sm transition"><i class="fa-solid fa-trash"></i></button>
+                            <div class="flex items-center space-x-3 cursor-pointer select-none" onclick="toggleSubjectCollapse(${sIdx})">
+                                <i class="fa-solid fa-chevron-${isSubjCollapsed ? 'right' : 'down'} text-slate-400 text-xs"></i>
+                                <h3 class="font-bold text-slate-900 text-lg flex items-center"><i class="fa-solid fa-book-medical text-red-600 mr-2"></i> ${subj.name}</h3>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                ${isAdmin ? `<button onclick="deleteSubject(${sIdx})" class="text-slate-400 hover:text-red-600 p-1 text-sm transition" title="Xóa môn"><i class="fa-solid fa-trash"></i></button>` : ''}
+                            </div>
                         </div>
-                        <div class="p-6 space-y-4">
+                        <div class="p-6 space-y-4 ${isSubjCollapsed ? 'hidden' : ''}">
                 `;
+
                 if (!subj.chapters || subj.chapters.length === 0) {
                     html += `<p class="text-sm text-slate-400 italic">Chưa có chương học nào.</p>`;
                 } else {
                     subj.chapters.forEach((chap, cIdx) => {
+                        let isChapCollapsed = collapsedChapters[`${sIdx}_${cIdx}`];
                         html += `
-                            <div class="space-y-2">
-                                <h4 class="font-semibold text-slate-700 text-sm flex items-center"><i class="fa-solid fa-bookmark text-amber-500 mr-2 text-xs"></i> ${chap.chapterName}</h4>
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pl-4">
+                            <div class="space-y-2 bg-slate-50/60 p-4 rounded-xl border border-slate-100">
+                                <div class="flex justify-between items-center">
+                                    <div class="flex items-center space-x-2 cursor-pointer select-none" onclick="toggleChapterCollapse(${sIdx}, ${cIdx})">
+                                        <i class="fa-solid fa-chevron-${isChapCollapsed ? 'right' : 'down'} text-slate-400 text-xs"></i>
+                                        <h4 class="font-semibold text-slate-700 text-sm"><i class="fa-solid fa-bookmark text-amber-500 mr-2 text-xs"></i> ${chap.chapterName}</h4>
+                                    </div>
+                                    ${isAdmin ? `
+                                    <div class="flex items-center space-x-1">
+                                        <button onclick="moveChapter(${sIdx},${cIdx}, -1)" class="text-slate-400 hover:text-slate-700 px-1 text-xs" title="Chuyển lên"><i class="fa-solid fa-arrow-up"></i></button>
+                                        <button onclick="moveChapter(${sIdx},${cIdx}, 1)" class="text-slate-400 hover:text-slate-700 px-1 text-xs" title="Chuyển xuống"><i class="fa-solid fa-arrow-down"></i></button>
+                                    </div>` : ''}
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pl-4 pt-2 ${isChapCollapsed ? 'hidden' : ''}">
                         `;
+
                         if (!chap.exams || chap.exams.length === 0) {
                             html += `<span class="text-xs text-slate-400 italic">Chưa có bài học.</span>`;
                         } else {
@@ -403,7 +451,7 @@
                                         </div>
                                         <div class="flex justify-between items-center pt-2 border-t border-slate-100">
                                             <button onclick="startExam('${sIdx}', '${cIdx}', '${eIdx}')" class="bg-red-50 hover:bg-red-700 hover:text-white text-red-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition">Vào luyện đề</button>
-                                            <button onclick="deleteExam('${sIdx}', '${cIdx}', '${eIdx}')" class="text-slate-400 hover:text-red-600 text-xs p-1"><i class="fa-solid fa-trash"></i></button>
+                                            ${isAdmin ? `<button onclick="deleteExam('${sIdx}', '${cIdx}', '${eIdx}')" class="text-slate-400 hover:text-red-600 text-xs p-1"><i class="fa-solid fa-trash"></i></button>` : ''}
                                         </div>
                                     </div>
                                 `;
@@ -415,6 +463,18 @@
                 html += `</div></div>`;
             });
             container.innerHTML = html;
+        }
+
+        function toggleSubjectCollapse(sIdx) { collapsedSubjects[sIdx] = !collapsedSubjects[sIdx]; renderHome(); }
+        function toggleChapterCollapse(sIdx, cIdx) { let key = `${sIdx}_${cIdx}`; collapsedChapters[key] = !collapsedChapters[key]; renderHome(); }
+
+        async function moveChapter(sIdx, cIdx, direction) {
+            let chapters = appData.subjects[sIdx].chapters;
+            let targetIdx = cIdx + direction;
+            if (targetIdx < 0 || targetIdx >= chapters.length) return;
+            let temp = chapters[cIdx]; chapters[cIdx] = chapters[targetIdx]; chapters[targetIdx] = temp;
+            await saveDataToCloud();
+            renderHome();
         }
 
         function openSubjectModal() {
@@ -441,9 +501,7 @@
         function openCreateExamModal() {
             const selectSubj = document.getElementById('modal-select-subject');
             selectSubj.innerHTML = '';
-            appData.subjects.forEach((s, idx) => {
-                selectSubj.innerHTML += `<option value="${idx}">${s.name}</option>`;
-            });
+            appData.subjects.forEach((s, idx) => { selectSubj.innerHTML += `<option value="${idx}">${s.name}</option>`; });
             document.getElementById('modal-input-chapter').value = '';
             document.getElementById('modal-input-title').value = '';
             document.getElementById('modal-input-bulk').value = '';
@@ -500,23 +558,25 @@
 
         function parseBulkQuestions(text) {
             let questions = [];
-            let rawBlocks = text.split(/(?=Câu\s+\d+[\.:])/i);
+            let rawBlocks = text.split(/(?=Câu\s+\d+[\.:]|Q\s*:\s*Câu)/i);
             rawBlocks.forEach(block => {
                 block = block.trim();
                 if (!block) return;
                 let lines = block.split('\n').map(l => l.trim()).filter(l => l);
                 if (lines.length < 3) return;
 
-                let questionText = lines[0].replace(/^Câu\s+\d+[\.:]?\s*/i, '');
+                let questionText = lines[0].replace(/^(Câu\s+\d+[\.:]?\s*|Q\s*:\s*)/i, '');
                 let options = [], correctAnswer = 0, explanation = "", i = 1;
 
                 while (i < lines.length) {
                     let line = lines[i];
-                    if (/^Đáp\s*án\s*[:\.]/i.test(line)) {
-                        correctAnswer = line.replace(/^Đáp\s*án\s*[:\.]\s*/i, '').trim().toUpperCase().charCodeAt(0) - 65;
+                    if (/^(Đáp\s*án\s*[:\.]|A\s*:\s*)/i.test(line)) {
+                        let ansStr = line.replace(/^(Đáp\s*án\s*[:\.]\s*|A\s*:\s*)/i, '').trim().toUpperCase();
+                        let ansChar = ansStr.charAt(0);
+                        if (ansChar >= 'A' && ansChar <= 'Z') { correctAnswer = ansChar.charCodeAt(0) - 65; }
                         i++;
-                    } else if (/^Giải\s*thích\s*[:\.]/i.test(line)) {
-                        explanation = line.replace(/^Giải\s*thích\s*[:\.]\s*/i, '').trim();
+                    } else if (/^Giải\s*thích\s*[:\.]/i.test(line) || /^E\s*:/i.test(line)) {
+                        explanation = line.replace(/^(Giải\s*thích\s*[:\.]\s*|E\s*:\s*)/i, '').trim();
                         i++;
                     } else if (/^[A-D][\.\)]/i.test(line) || /^\*[A-D][\.\)]/i.test(line)) {
                         let isCorrect = line.startsWith('*');
@@ -524,12 +584,19 @@
                         options.push(line.replace(/^\*/, ''));
                         i++;
                     } else {
-                        if (options.length === 0) questionText += " " + line;
+                        if (options.length === 0) { questionText += " " + line; }
+                        else if (!explanation && (line.length > 0)) { explanation += " " + line; }
                         i++;
                     }
                 }
                 if (options.length >= 2) {
-                    questions.push({ id: questions.length + 1, questionText, options, correctAnswer: (correctAnswer >= 0 && correctAnswer < options.length) ? correctAnswer : 0, explanation: explanation || "Không có giải thích." });
+                    questions.push({
+                        id: questions.length + 1,
+                        questionText,
+                        options,
+                        correctAnswer: (correctAnswer >= 0 && correctAnswer < options.length) ? correctAnswer : 0,
+                        explanation: explanation ? explanation.trim() : ""
+                    });
                 }
             });
             return questions;
@@ -544,6 +611,7 @@
         }
 
         function startExam(sIdx, cIdx, eIdx) {
+            currentExamRef = { sIdx, cIdx, eIdx };
             currentExam = JSON.parse(JSON.stringify(appData.subjects[sIdx].chapters[cIdx].exams[eIdx]));
             document.getElementById('exam-title-header').innerText = currentExam.title;
             document.getElementById('exam-badge-subject').innerText = appData.subjects[sIdx].name;
@@ -577,7 +645,10 @@
             let html = `
                 <div class="flex justify-between items-start">
                     <span class="bg-red-50 text-red-700 font-semibold px-3 py-1 rounded-lg text-sm border border-red-100">Câu ${currentQuestionIndex + 1} / ${activeQuestions.length}</span>
-                    ${unsureQuestions[currentQuestionIndex] ? '<span class="bg-amber-100 text-amber-800 text-xs px-2.5 py-1 rounded-full font-bold">Phân vân</span>' : ''}
+                    <div class="flex items-center space-x-2">
+                        ${isAdmin ? `<button onclick="openEditQuestionModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-2.5 py-1 rounded-lg font-medium transition flex items-center"><i class="fa-solid fa-pen-to-square mr-1.5 text-red-600"></i> Sửa câu hỏi</button>` : ''}
+                        ${unsureQuestions[currentQuestionIndex] ? '<span class="bg-amber-100 text-amber-800 text-xs px-2.5 py-1 rounded-full font-bold">Phân vân</span>' : ''}
+                    </div>
                 </div>
                 <h4 class="text-slate-900 font-bold text-lg leading-relaxed">${q.questionText}</h4>
                 <div class="space-y-3 pt-2">
@@ -596,10 +667,61 @@
             });
             html += `</div>`;
 
-            if (isAnswered && settings.showAnswer) {
-                html += `<div class="p-4 bg-slate-50 rounded-xl border border-slate-200 text-sm space-y-1"><span class="font-bold text-slate-900 block"><i class="fa-solid fa-circle-info text-blue-600 mr-1"></i> Giải thích:</span><p class="text-slate-600">${q.explanation}</p></div>`;
+            if (isAnswered && settings.showAnswer && q.explanation && q.explanation.trim() !== "") {
+                html += `
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 text-sm space-y-1">
+                        <span class="font-bold text-slate-900 block"><i class="fa-solid fa-circle-info text-blue-600 mr-1"></i> Giải thích chi tiết:</span>
+                        <p class="text-slate-600">${q.explanation}</p>
+                    </div>
+                `;
             }
             container.innerHTML = html;
+        }
+
+        function openEditQuestionModal() {
+            if (!isAdmin) return;
+            const q = activeQuestions[currentQuestionIndex];
+            document.getElementById('edit-q-text').value = q.questionText;
+            document.getElementById('edit-opt-0').value = q.options[0] || '';
+            document.getElementById('edit-opt-1').value = q.options[1] || '';
+            document.getElementById('edit-opt-2').value = q.options[2] || '';
+            document.getElementById('edit-opt-3').value = q.options[3] || '';
+            document.getElementById('edit-correct-ans').value = q.correctAnswer || 0;
+            document.getElementById('edit-explanation').value = q.explanation || '';
+            document.getElementById('modal-edit-question').classList.remove('hidden');
+        }
+
+        function closeEditQuestionModal() { document.getElementById('modal-edit-question').classList.add('hidden'); }
+
+        async function saveEditedQuestion() {
+            let q = activeQuestions[currentQuestionIndex];
+            q.questionText = document.getElementById('edit-q-text').value.trim();
+            q.options = [
+                document.getElementById('edit-opt-0').value.trim(),
+                document.getElementById('edit-opt-1').value.trim(),
+                document.getElementById('edit-opt-2').value.trim(),
+                document.getElementById('edit-opt-3').value.trim()
+            ].filter(o => o);
+            q.correctAnswer = parseInt(document.getElementById('edit-correct-ans').value);
+            q.explanation = document.getElementById('edit-explanation').value.trim();
+
+            let { sIdx, cIdx, eIdx } = currentExamRef;
+            if (sIdx !== null && cIdx !== null && eIdx !== null) {
+                let examObj = appData.subjects[sIdx].chapters[cIdx].exams[eIdx];
+                let originalQ = examObj.questions.find(item => item.id === q.id) || examObj.questions[currentQuestionIndex];
+                if (originalQ) {
+                    originalQ.questionText = q.questionText;
+                    originalQ.options = q.options;
+                    originalQ.correctAnswer = q.correctAnswer;
+                    originalQ.explanation = q.explanation;
+                }
+                await saveDataToCloud();
+            }
+
+            closeEditQuestionModal();
+            renderQuestion();
+            renderPalette();
+            alert('Đã cập nhật câu hỏi thành công!');
         }
 
         async function selectAnswer(optIdx) {
@@ -751,7 +873,7 @@
                         renderHome();
                         renderHabitTracker();
                         updateMistakeBadge();
-                        alert('Nhập dữ liệu và đồng bộ Cloud thành công!');
+                        alert('Nhập dữ liệu thành công!');
                     } else { alert('File JSON không hợp lệ!'); }
                 } catch (err) { alert('Lỗi đọc file!'); }
             };
