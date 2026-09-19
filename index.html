@@ -40,11 +40,7 @@
         window.firebaseUpdateDoc = updateDoc;
         window.firebaseOnSnapshot = onSnapshot;
 
-        window.addEventListener('DOMContentLoaded', () => {
-            if (typeof window.initAppSession === 'function') {
-                window.initAppSession();
-            }
-        });
+        window.dispatchEvent(new Event('firebase-ready'));
     </script>
 </head>
 <body class="bg-[#FFF5F8] text-slate-800 font-sans antialiased min-h-screen flex flex-col">
@@ -62,7 +58,6 @@
                 </div>
             </div>
 
-            <!-- Menu Điều hướng bọc flex-wrap mượt mà trên mobile -->
             <nav class="flex items-center flex-wrap gap-1.5 md:gap-3 text-xs md:text-sm w-full md:w-auto justify-end pt-1 md:pt-0 border-t border-[#FFB6C1]/20 md:border-t-0">
                 <button onclick="switchTab('home')" id="nav-home" class="px-2.5 py-1 rounded-lg font-medium bg-[#FF4081] transition flex items-center"><i class="fa-solid fa-house mr-1"></i> Trang chủ</button>
                 <button onclick="switchTab('mistakes')" id="nav-mistakes" class="px-2.5 py-1 rounded-lg font-medium hover:bg-[#FF4081] transition relative flex items-center"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Ôn câu sai <span id="badge-mistakes" class="ml-1 bg-[#FF4081] text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold hidden">0</span></button>
@@ -112,7 +107,11 @@
                 </div>
             </div>
 
-            <div id="subjects-container" class="space-y-4"></div>
+            <div id="subjects-container" class="space-y-4">
+                <div class="bg-white p-6 rounded-2xl text-center text-slate-400 text-sm">
+                    <i class="fa-solid fa-spinner fa-spin mr-2"></i> Đang tải tài liệu từ mây...
+                </div>
+            </div>
         </div>
 
         <!-- TAB 2: LÀM BÀI THI -->
@@ -187,7 +186,7 @@
         </div>
     </main>
 
-    <!-- MODALS KHÁC (GIỮ NGUYÊN) -->
+    <!-- MODALS -->
     <div id="modal-auth" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl max-w-md w-full p-6 md:p-8 shadow-2xl space-y-5">
             <div class="text-center space-y-1.5">
@@ -215,7 +214,6 @@
         </div>
     </div>
 
-    <!-- MODAL QUẢN LÝ USER -->
     <div id="modal-users" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-2xl max-w-2xl w-full p-5 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
             <div class="flex justify-between items-center border-b pb-3">
@@ -229,7 +227,6 @@
         </div>
     </div>
 
-    <!-- MODAL THÊM MÔN HỌC -->
     <div id="modal-subject" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
             <h3 class="text-base font-bold text-slate-900">Thêm Môn Học Mới</h3>
@@ -241,7 +238,6 @@
         </div>
     </div>
 
-    <!-- MODAL TẠO ĐỀ -->
     <div id="modal-exam" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-2xl max-w-2xl w-full p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center border-b pb-3">
@@ -284,7 +280,6 @@
         </div>
     </div>
 
-    <!-- MODAL ĐỔI TÊN & SỬA CÂU HỎI -->
     <div id="modal-rename" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4">
             <h3 id="rename-modal-title" class="text-base font-bold text-slate-900">Đổi tên</h3>
@@ -323,7 +318,7 @@
         </div>
     </div>
 
-    <!-- Script xử lý ứng dụng & Đồng bộ chuẩn di động -->
+    <!-- Script xử lý ứng dụng -->
     <script>
         let appData = { subjects: [] };
         let userPersonalData = { mistakes: [], habits: {} };
@@ -355,10 +350,25 @@
             } else {
                 document.getElementById('modal-auth').classList.add('hidden');
                 updateNavbarUser();
-                await startAppDataRealtimeSync();
+                await waitForFirebaseAndSync();
                 await loadUserPersonalData();
             }
         };
+
+        window.addEventListener('firebase-ready', () => {
+            if (currentUser) {
+                startAppDataRealtimeSync();
+            }
+        });
+
+        async function waitForFirebaseAndSync() {
+            let retries = 0;
+            while (!window.firebaseDB && retries < 25) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+                retries++;
+            }
+            await startAppDataRealtimeSync();
+        }
 
         function updateNavbarUser() {
             document.getElementById('nav-username').innerText = currentUser.username;
@@ -398,7 +408,7 @@
                     localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
                     document.getElementById('modal-auth').classList.add('hidden');
                     updateNavbarUser();
-                    await startAppDataRealtimeSync();
+                    await waitForFirebaseAndSync();
                     await loadUserPersonalData();
                     return;
                 }
@@ -420,7 +430,7 @@
                             localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
                             document.getElementById('modal-auth').classList.add('hidden');
                             updateNavbarUser();
-                            await startAppDataRealtimeSync();
+                            await waitForFirebaseAndSync();
                             await loadUserPersonalData();
                             return;
                         }
@@ -538,7 +548,6 @@
             }
         }
 
-        // TẢI & ĐỒNG BỘ CHẮC CHẮN TRÊN MỌI THIẾT BỊ DI ĐỘNG
         async function startAppDataRealtimeSync() {
             let localData = localStorage.getItem("vmu_local_exam_backup");
             if (localData) {
@@ -554,7 +563,6 @@
                 if (window.firebaseDB) {
                     const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
                     
-                    // Gọi trực tiếp getDoc 1 lần đầu tiên để phòng trường hợp di động bị trễ Listener
                     const firstSnap = await window.firebaseGetDoc(docRef);
                     if (firstSnap.exists()) {
                         appData = firstSnap.data();
@@ -562,7 +570,6 @@
                         renderHome();
                     }
 
-                    // Tiếp tục duy trì kết nối Realtime ngầm
                     appDataUnsub = window.firebaseOnSnapshot(docRef, (docSnap) => {
                         if (docSnap.exists()) {
                             let cloudData = docSnap.data();
