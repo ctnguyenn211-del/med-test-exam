@@ -247,7 +247,7 @@
                     <select id="modal-select-subject" onchange="updateChapterDropdown()" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600"></select>
                 </div>
                 
-                <!-- PHẦN 1: TẢI NHIỀU FOLDER (TÊN FOLDER LÀM TÊN CHƯƠNG) -->
+                <!-- PHẦN 1: TẢI NHIỀU FOLDER -->
                 <div class="p-5 bg-red-50/50 border-2 border-dashed border-red-300 rounded-2xl space-y-3">
                     <label class="block font-bold text-slate-800"><i class="fa-solid fa-folder-open text-amber-500 mr-2"></i> Cách 1: Tải lên các Folder chứa bài học (.docx)</label>
                     <p class="text-xs text-slate-500">💡 Tên từng folder sẽ tự động làm tên Chương.</p>
@@ -877,192 +877,194 @@
             }
         }
 
+        // HÀM NHẬP FILE ĐƯỢC TỐI ƯU HÓA HOÀN HẢO
         async function saveNewExam() {
             const sIdx = document.getElementById('modal-select-subject').value;
             const folderInput = document.getElementById('modal-input-folder');
             const fileInput = document.getElementById('modal-input-docs');
 
-            if (sIdx === "") return alert('Vui lòng chọn môn học!');
+            if (sIdx === "" || sIdx === null) return alert('Vui lòng chọn môn học!');
             let subj = appData.subjects[sIdx];
+            if (!subj) return alert('Vui lòng chọn môn học hợp lệ!');
+
             let processedCount = 0;
+            let filesToProcess = [];
 
-            // TRƯỜNG HỢP 1: TẢI FOLDER (TỰ ĐỘNG LẤY TÊN FOLDER LÀM TÊN CHƯƠNG)
             if (folderInput.files && folderInput.files.length > 0) {
-                for (let file of folderInput.files) {
-                    if (!file.name.toLowerCase().endsWith('.docx')) continue;
-                    try {
-                        let arrayBuffer = await file.arrayBuffer();
-                        let result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-                        let questions = parseBulkQuestions(result.value);
-                        if (questions.length > 0) {
-                            let pathParts = file.webkitRelativePath ? file.webkitRelativePath.split('/') : [file.name];
-                            let chapterName = "Chương 1";
-                            let examTitle = file.name.replace(/\.[^/.]+$/, "");
+                for (let f of folderInput.files) filesToProcess.push({ file: f, isFolder: true });
+            }
+            if (fileInput.files && fileInput.files.length > 0) {
+                for (let f of fileInput.files) filesToProcess.push({ file: f, isFolder: false });
+            }
 
+            if (filesToProcess.length === 0) {
+                return alert('Vui lòng chọn ít nhất 1 file .docx hoặc folder!');
+            }
+
+            for (let item of filesToProcess) {
+                let file = item.file;
+                let fileName = file.name;
+
+                // Bỏ qua file ẩn tạm thời của Word (~$...) hoặc file không phải .docx
+                if (!fileName.toLowerCase().endsWith('.docx') || fileName.startsWith('~$')) continue;
+
+                try {
+                    let arrayBuffer = await file.arrayBuffer();
+                    let result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+                    let questions = parseBulkQuestions(result.value);
+
+                    if (questions && questions.length > 0) {
+                        let targetChapter = null;
+                        let examTitle = fileName.replace(/\.[^/.]+$/, "");
+
+                        if (item.isFolder) {
+                            let pathParts = file.webkitRelativePath ? file.webkitRelativePath.split('/') : [fileName];
+                            let chapterName = "Chương 1";
                             if (pathParts.length > 1) {
                                 chapterName = pathParts[pathParts.length - 2].replace(/[_]/g, ' ').trim();
                             }
-
-                            let targetChapter = subj.chapters.find(c => c.chapterName.toLowerCase() === chapterName.toLowerCase());
+                            targetChapter = subj.chapters.find(c => c.chapterName.toLowerCase() === chapterName.toLowerCase());
                             if (!targetChapter) {
-                                targetChapter = { chapterName, exams: [] };
+                                targetChapter = { chapterName: chapterName, exams: [] };
                                 subj.chapters.push(targetChapter);
                             }
-
-                            let existingExam = targetChapter.exams.find(e => e.title === examTitle);
-                            if (!existingExam) {
-                                targetChapter.exams.push({
-                                    id: 'ex_' + Date.now() + Math.random(),
-                                    title: examTitle,
-                                    questions
-                                });
-                                processedCount++;
+                        } else {
+                            let chapSelectVal = document.getElementById('modal-select-chapter').value;
+                            if (chapSelectVal === "NEW") {
+                                let newChapName = document.getElementById('modal-input-new-chapter').value.trim() || "Chương mới";
+                                targetChapter = subj.chapters.find(c => c.chapterName.toLowerCase() === newChapName.toLowerCase());
+                                if (!targetChapter) {
+                                    targetChapter = { chapterName: newChapName, exams: [] };
+                                    subj.chapters.push(targetChapter);
+                                }
+                            } else {
+                                let idx = parseInt(chapSelectVal);
+                                if (!isNaN(idx) && subj.chapters[idx]) {
+                                    targetChapter = subj.chapters[idx];
+                                } else {
+                                    targetChapter = { chapterName: "Chương 1", exams: [] };
+                                    subj.chapters.push(targetChapter);
+                                }
                             }
                         }
-                    } catch (e) {}
-                }
-            }
 
-            // TRƯỜNG HỢP 2: TẢI FILE ĐƠN LẺ VÀO CHƯƠNG ĐÃ CHỌN HOẶC TỰ TẠO MỚI
-            if (fileInput.files && fileInput.files.length > 0) {
-                let chapSelectVal = document.getElementById('modal-select-chapter').value;
-                let targetChapter = null;
-
-                if (chapSelectVal === "NEW") {
-                    let newChapName = document.getElementById('modal-input-new-chapter').value.trim();
-                    if (!newChapName) return alert('Vui lòng nhập tên chương mới!');
-                    targetChapter = { chapterName: newChapName, exams: [] };
-                    subj.chapters.push(targetChapter);
-                } else {
-                    targetChapter = subj.chapters[parseInt(chapSelectVal)];
-                    if (!targetChapter) {
-                        targetChapter = { chapterName: "Chương 1", exams: [] };
-                        subj.chapters.push(targetChapter);
-                    }
-                }
-
-                for (let file of fileInput.files) {
-                    if (!file.name.toLowerCase().endsWith('.docx')) continue;
-                    try {
-                        let arrayBuffer = await file.arrayBuffer();
-                        let result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-                        let questions = parseBulkQuestions(result.value);
-                        if (questions.length > 0) {
+                        let existingExam = targetChapter.exams.find(e => e.title === examTitle);
+                        if (existingExam) {
+                            existingExam.questions = questions;
+                        } else {
                             targetChapter.exams.push({
-                                id: 'ex_' + Date.now() + Math.random(),
-                                title: file.name.replace(/\.[^/.]+$/, ""),
-                                questions
+                                id: 'ex_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+                                title: examTitle,
+                                questions: questions
                             });
-                            processedCount++;
                         }
-                    } catch (e) {}
+                        processedCount++;
+                    }
+                } catch (err) {
+                    console.error("Lỗi đọc file:", fileName, err);
                 }
             }
 
-            if (processedCount === 0) return alert('Không tìm thấy dữ liệu hợp lệ hoặc chưa chọn file .docx!');
+            if (processedCount === 0) {
+                return alert('Không bóc tách được câu hỏi nào! Vui lòng đảm bảo bạn đang chọn đúng file Word dạng .docx.');
+            }
 
             saveAppDataToCloud();
             closeCreateExamModal();
             renderHome();
-            alert(`Đã nhập thành công ${processedCount} bài học!`);
+            alert(`Thành công! Đã nhập ${processedCount} bài học mới.`);
         }
 
-        // HÀM PHÂN TÍCH ĐỀ THI ĐÃ TỐI ƯU HÓA HOÀN HẢO CHO ĐỊNH DẠNG Q:, Câu X., A: D. ..., E: ...
+        // BỘ ĐỌC CÂU HỎI MÁY TRẠNG THÁI (STATE MACHINE) CHÍNH XÁC Tuyệt ĐỐI
         function parseBulkQuestions(text) {
             if (!text) return [];
+
+            let lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
             let questions = [];
+            let currentQ = null;
+            let currentStage = 'NONE'; // các trạng thái: 'QUESTION', 'OPTION', 'ANSWER', 'EXPLANATION'
 
-            // Chuẩn hóa ngắt dòng
-            text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            for (let rawLine of lines) {
+                let line = rawLine.trim();
+                if (!line) continue;
 
-            // Tách các câu hỏi theo tiêu đề bắt đầu (Q: hoặc Câu X. hoặc Question X.)
-            let rawBlocks = text.split(/(?=(?:^|\n)\s*(?:Q\s*[\.:]|Câu\s*\d+[\.:]|Question\s*\d+[\.:]|\d+[\.:]\s*Q:|\d+[\.:]\s*Câu))/i);
-
-            rawBlocks.forEach(block => {
-                block = block.trim();
-                if (!block) return;
-
-                let lines = block.split('\n').map(l => l.trim()).filter(l => l !== '');
-                if (lines.length < 2) return;
-
-                // Dòng đầu tiên chứa nội dung câu hỏi
-                let questionText = lines[0];
-                // Lọc sạch cả Q:, Câu 1., Question 1. liên tiếp ở đầu câu
-                questionText = questionText.replace(/^(?:Q\s*[\.:]?\s*|Câu\s*\d+[\.:]?\s*|Question\s*\d+[\.:]?\s*|\d+[\.:]\s*)+/i, '').trim();
-
-                let rawOptions = [];
-                let correctAnswer = -1;
-                let explanation = "";
-                let i = 1;
-
-                while (i < lines.length) {
-                    let line = lines[i];
-
-                    // 1. Nhận diện dòng đáp án đúng (ví dụ: "A: D. Xơ vữa động mạch", "A: D", "Đáp án: D", "Answer: D")
-                    let ansMatch = line.match(/^(?:Đáp\s*án|Answer|Key|A)\s*[:\.]\s*([A-D])(?:[\.\)\:\s]|$)/i);
-                    if (ansMatch && rawOptions.length > 0) {
-                        let ansChar = ansMatch[1].toUpperCase();
-                        correctAnswer = ansChar.charCodeAt(0) - 65;
-                        i++;
-                        continue;
-                    }
-
-                    // 2. Nhận diện dòng giải thích (ví dụ: "E: ...", "Giải thích: ...")
-                    let expMatch = line.match(/^(?:Giải\s*thích|Explanation|Exp|E)\s*[:\.]\s*(.*)/i);
-                    if (expMatch) {
-                        explanation = expMatch[1].trim();
-                        i++;
-                        while (i < lines.length) {
-                            let nextLine = lines[i];
-                            if (!nextLine.match(/^(?:Đáp\s*án|Answer|Key|A)\s*[:\.]/i) &&
-                                !nextLine.match(/^(\*?)([A-D])[\.\)\:]/i)) {
-                                explanation += " " + nextLine;
-                                i++;
-                            } else {
-                                break;
-                            }
-                        }
-                        continue;
-                    }
-
-                    // 3. Nhận diện lựa chọn A, B, C, D (ví dụ: "A. Huyết khối...", "B) ...", "*C. ...")
-                    let optMatch = line.match(/^(\*?)([A-D])[\.\)\:]\s*(.*)/i);
-                    if (optMatch) {
-                        let isStarred = optMatch[1] === '*';
-                        let optLabel = optMatch[2].toUpperCase();
-                        let optContent = optMatch[3].trim();
-                        let fullOptText = optLabel + ". " + optContent;
-
-                        if (isStarred) {
-                            correctAnswer = rawOptions.length;
-                        }
-
-                        rawOptions.push(fullOptText);
-                        i++;
-                        continue;
-                    }
-
-                    // 4. Văn bản nối tiếp trên nhiều dòng
-                    if (rawOptions.length === 0) {
-                        questionText += " " + line;
-                    } else if (rawOptions.length > 0 && !explanation) {
-                        rawOptions[rawOptions.length - 1] += " " + line;
-                    }
-                    i++;
+                // 1. Kiểm tra Dòng Đáp án (ví dụ: "A: C. Viêm nội tâm mạc...", "Đáp án: C", "Answer: C")
+                let ansMatch = line.match(/^(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|ĐA\s*[:\.])\s*([A-D])(?:[\.\)\:\s]|$)/i);
+                if (ansMatch && currentQ) {
+                    let ansChar = ansMatch[1].toUpperCase();
+                    currentQ.correctAnswer = ansChar.charCodeAt(0) - 65;
+                    currentStage = 'ANSWER';
+                    continue;
                 }
 
-                if (correctAnswer === -1) correctAnswer = 0;
+                // 2. Kiểm tra Dòng Giải thích (ví dụ: "E: ...", "Giải thích: ...")
+                let expMatch = line.match(/^(?:E\s*[:\.]|Exp\s*[:\.]|Explanation\s*[:\.]|Giải\s*thích\s*[:\.])\s*(.*)/i);
+                if (expMatch && currentQ) {
+                    currentQ.explanation = expMatch[1].trim();
+                    currentStage = 'EXPLANATION';
+                    continue;
+                }
 
-                if (questionText && rawOptions.length >= 2) {
-                    questions.push({
+                // 3. Kiểm tra Dòng Lựa chọn (A. ..., B. ..., C. ..., D. ..., *A. ...)
+                let optMatch = line.match(/^(\*?)([A-D])[\.\)\:]\s*(.*)/i);
+                if (optMatch && currentQ && (currentStage === 'QUESTION' || currentStage === 'OPTION')) {
+                    let isStarred = optMatch[1] === '*';
+                    let optLetter = optMatch[2].toUpperCase();
+                    let optContent = optMatch[3].trim();
+                    let fullOptText = optLetter + ". " + optContent;
+
+                    if (isStarred) {
+                        currentQ.correctAnswer = currentQ.options.length;
+                    }
+                    currentQ.options.push(fullOptText);
+                    currentStage = 'OPTION';
+                    continue;
+                }
+
+                // 4. Kiểm tra Dòng Tiêu đề Câu hỏi mới (Q: Câu 1., Q 27., Câu 1., Question 1., 1.)
+                let isNewQ = false;
+                let cleanQText = line;
+
+                if (line.match(/^(?:Q\s*[:\.]|Q\s*\d+[\.:]|Câu\s*\d+[\.:]|Question\s*\d+[\.:])/i)) {
+                    isNewQ = true;
+                    cleanQText = line.replace(/^(?:Q\s*[:\.]?\s*|Câu\s*\d+[\.:]?\s*|Question\s*\d+[\.:]?\s*|\d+[\.:]\s*)+/i, '').trim();
+                } else if (currentStage === 'NONE' || currentStage === 'EXPLANATION' || (currentStage === 'ANSWER' && currentQ && currentQ.options.length >= 2)) {
+                    if (line.match(/^(?:\d+[\.:\)])\s*(.*)/i)) {
+                        isNewQ = true;
+                        cleanQText = line.replace(/^(?:\d+[\.:\)]\s*)+/i, '').trim();
+                    }
+                }
+
+                if (isNewQ) {
+                    if (currentQ && currentQ.options.length >= 2) {
+                        questions.push(currentQ);
+                    }
+                    currentQ = {
                         id: questions.length + 1,
-                        questionText: questionText.trim(),
-                        options: rawOptions,
-                        correctAnswer: correctAnswer,
-                        explanation: explanation.trim()
-                    });
+                        questionText: cleanQText,
+                        options: [],
+                        correctAnswer: 0,
+                        explanation: ""
+                    };
+                    currentStage = 'QUESTION';
+                    continue;
                 }
-            });
+
+                // 5. Nối dòng văn bản kéo dài (Nhiều dòng)
+                if (currentQ) {
+                    if (currentStage === 'QUESTION') {
+                        currentQ.questionText += " " + line;
+                    } else if (currentStage === 'OPTION' && currentQ.options.length > 0) {
+                        currentQ.options[currentQ.options.length - 1] += " " + line;
+                    } else if (currentStage === 'EXPLANATION') {
+                        currentQ.explanation += (currentQ.explanation ? " " : "") + line;
+                    }
+                }
+            }
+
+            if (currentQ && currentQ.options.length >= 2) {
+                questions.push(currentQ);
+            }
 
             return questions;
         }
