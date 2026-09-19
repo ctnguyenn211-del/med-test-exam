@@ -245,20 +245,15 @@
                     <select id="modal-select-subject" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600"></select>
                 </div>
                 
-                <!-- TÍNH NĂNG CHỌN FOLDER WORD -->
                 <div class="p-5 bg-red-50/50 border-2 border-dashed border-red-300 rounded-2xl space-y-3">
                     <label class="block font-bold text-slate-800"><i class="fa-solid fa-folder-open text-amber-500 mr-2"></i> Tải lên Folder chứa các file Word (.docx)</label>
-                    <p class="text-xs text-slate-500">Hệ thống sẽ tự động đọc cấu trúc thư mục hoặc tên file (Ví dụ: tên file chứa "Chương 1", "Chương 2"...) để tự động phân loại vào đúng chương và bài!</p>
+                    <p class="text-xs text-slate-500">Hệ thống sẽ tự động đọc cấu trúc thư mục hoặc tên file để phân loại vào đúng chương và bài!</p>
                     <input type="file" id="modal-input-folder" accept=".docx" multiple webkitdirectory directory class="w-full text-sm text-slate-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-red-700 file:text-white hover:file:bg-red-800 cursor-pointer">
                 </div>
 
                 <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                     <label class="block font-medium text-slate-700"><i class="fa-solid fa-file-word text-blue-600 mr-2"></i> Hoặc chọn nhiều file Word đơn lẻ</label>
                     <input type="file" id="modal-input-docs" accept=".docx" multiple class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
-                </div>
-                <div>
-                    <label class="block font-medium text-slate-700 mb-1">Hoặc Dán nội dung câu hỏi hàng loạt (Thủ công)</label>
-                    <textarea id="modal-input-bulk" rows="4" placeholder="Dán nội dung theo định dạng..." class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600 font-mono text-xs"></textarea>
                 </div>
             </div>
             <div class="flex justify-end space-x-3 pt-2 border-t">
@@ -268,7 +263,19 @@
         </div>
     </div>
 
-    <!-- MODAL: SỬA CÂU HỎI -->
+    <!-- SCRIPT CHỈNH SỬA TÊN CHƯƠNG / TÊN BÀI -->
+    <div id="modal-rename" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+            <h3 id="rename-modal-title" class="text-lg font-bold text-slate-900">Đổi tên</h3>
+            <input type="text" id="input-rename-val" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600 text-sm">
+            <div class="flex justify-end space-x-3 pt-2">
+                <button onclick="closeRenameModal()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-sm font-medium">Hủy</button>
+                <button onclick="confirmRename()" class="bg-red-700 hover:bg-red-800 text-white px-5 py-2 rounded-xl text-sm font-medium">Lưu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPT CHỈNH SỬA CÂU HỎI -->
     <div id="modal-edit-question" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center border-b pb-3">
@@ -313,6 +320,7 @@
         let activeQuestions = [];
         let collapsedSubjects = {};
         let collapsedChapters = {};
+        let renameTarget = null; // Dùng cho modal đổi tên
 
         const ADMIN_PASSWORD = "212696";
 
@@ -398,7 +406,7 @@
             } catch(e) {}
 
             errEl.innerText = "Sai tên đăng nhập, mật khẩu hoặc chưa được duyệt!";
-            errEl.classList.remove('hidden');
+            errEl.classList.add('hidden');
         }
 
         async function handleRegister() {
@@ -499,7 +507,6 @@
             }
         }
 
-        // Tải kho đề thi chung
         async function loadAppData() {
             try {
                 if (window.firebaseDB) {
@@ -615,7 +622,7 @@
             }
         }
 
-        function extractChapterNumber(name) {
+        function extractNumber(name) {
             let match = name.match(/\d+/);
             return match ? parseInt(match[0]) : 9999;
         }
@@ -630,8 +637,9 @@
             let isAdmin = currentUser && currentUser.role === 'admin';
             let html = '';
             appData.subjects.forEach((subj, sIdx) => {
+                // TỰ ĐỘNG SẮP XẾP CHƯƠNG TỪ THẤP ĐẾN CAO
                 if (subj.chapters && subj.chapters.length > 0) {
-                    subj.chapters.sort((a, b) => extractChapterNumber(a.chapterName) - extractChapterNumber(b.chapterName));
+                    subj.chapters.sort((a, b) => extractNumber(a.chapterName) - extractNumber(b.chapterName));
                 }
 
                 let isSubjCollapsed = collapsedSubjects[sIdx] !== undefined ? collapsedSubjects[sIdx] : true;
@@ -653,6 +661,11 @@
                     html += `<p class="text-sm text-slate-400 italic">Chưa có chương học nào.</p>`;
                 } else {
                     subj.chapters.forEach((chap, cIdx) => {
+                        // TỰ ĐỘNG SẮP XẾP BÀI HỌC TRONG CHƯƠNG TỪ THẤP ĐẾN CAO
+                        if (chap.exams && chap.exams.length > 0) {
+                            chap.exams.sort((a, b) => extractNumber(a.title) - extractNumber(b.title));
+                        }
+
                         let chapKey = `${sIdx}_${cIdx}`;
                         let isChapCollapsed = collapsedChapters[chapKey] !== undefined ? collapsedChapters[chapKey] : true;
                         html += `
@@ -662,11 +675,12 @@
                                         <i class="fa-solid fa-chevron-${isChapCollapsed ? 'right' : 'down'} text-slate-400 text-xs"></i>
                                         <h4 class="font-semibold text-slate-700 text-sm"><i class="fa-solid fa-bookmark text-amber-500 mr-2 text-xs"></i> ${chap.chapterName}</h4>
                                     </div>
-                                    ${isAdmin ? `
-                                    <div class="flex items-center space-x-1">
-                                        <button onclick="moveChapter(${sIdx}, ${cIdx}, -1)" class="text-slate-400 hover:text-slate-700 px-1 text-xs" title="Chuyển lên"><i class="fa-solid fa-arrow-up"></i></button>
-                                        <button onclick="moveChapter(${sIdx}, ${cIdx}, 1)" class="text-slate-400 hover:text-slate-700 px-1 text-xs" title="Chuyển xuống"><i class="fa-solid fa-arrow-down"></i></button>
-                                    </div>` : ''}
+                                    <div class="flex items-center space-x-2">
+                                        ${isAdmin ? `
+                                            <button onclick="openRenameModal('chapter', ${sIdx}, ${cIdx}, null)" class="text-slate-400 hover:text-blue-600 p-1 text-xs" title="Sửa tên chương"><i class="fa-solid fa-pen"></i></button>
+                                            <button onclick="deleteChapter(${sIdx}, ${cIdx})" class="text-slate-400 hover:text-red-600 p-1 text-xs" title="Xóa chương"><i class="fa-solid fa-trash"></i></button>
+                                        ` : ''}
+                                    </div>
                                 </div>
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pl-4 pt-2 ${isChapCollapsed ? 'hidden' : ''}">
                         `;
@@ -683,7 +697,11 @@
                                         </div>
                                         <div class="flex justify-between items-center pt-2 border-t border-slate-100">
                                             <button onclick="startExam('${sIdx}', '${cIdx}', '${eIdx}')" class="bg-red-50 hover:bg-red-700 hover:text-white text-red-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition">Vào luyện đề</button>
-                                            ${isAdmin ? `<button onclick="deleteExam('${sIdx}', '${cIdx}', '${eIdx}')" class="text-slate-400 hover:text-red-600 text-xs p-1"><i class="fa-solid fa-trash"></i></button>` : ''}
+                                            ${isAdmin ? `
+                                            <div class="flex items-center space-x-1">
+                                                <button onclick="openRenameModal('exam', ${sIdx}, ${cIdx}, ${eIdx})" class="text-slate-400 hover:text-blue-600 p-1 text-xs" title="Sửa tên bài"><i class="fa-solid fa-pen"></i></button>
+                                                <button onclick="deleteExam('${sIdx}', '${cIdx}', '${eIdx}')" class="text-slate-400 hover:text-red-600 text-xs p-1" title="Xóa bài"><i class="fa-solid fa-trash"></i></button>
+                                            </div>` : ''}
                                         </div>
                                     </div>
                                 `;
@@ -697,6 +715,53 @@
             container.innerHTML = html;
         }
 
+        // TÍNH NĂNG SỬA TÊN CHƯƠNG / TÊN BÀI
+        function openRenameModal(type, sIdx, cIdx, eIdx) {
+            renameTarget = { type, sIdx, cIdx, eIdx };
+            let titleEl = document.getElementById('rename-modal-title');
+            let inputEl = document.getElementById('input-rename-val');
+
+            if (type === 'chapter') {
+                titleEl.innerText = "Sửa tên Chương";
+                inputEl.value = appData.subjects[sIdx].chapters[cIdx].chapterName;
+            } else {
+                titleEl.innerText = "Sửa tên Bài học";
+                inputEl.value = appData.subjects[sIdx].chapters[cIdx].exams[eIdx].title;
+            }
+            document.getElementById('modal-rename').classList.remove('hidden');
+            inputEl.focus();
+        }
+
+        function closeRenameModal() {
+            document.getElementById('modal-rename').classList.add('hidden');
+            renameTarget = null;
+        }
+
+        async function confirmRename() {
+            let newVal = document.getElementById('input-rename-val').value.trim();
+            if (!newVal) return alert('Tên không được để trống!');
+
+            let { type, sIdx, cIdx, eIdx } = renameTarget;
+            if (type === 'chapter') {
+                appData.subjects[sIdx].chapters[cIdx].chapterName = newVal;
+            } else {
+                appData.subjects[sIdx].chapters[cIdx].exams[eIdx].title = newVal;
+            }
+
+            await saveAppDataToCloud();
+            closeRenameModal();
+            renderHome();
+        }
+
+        // XÓA CHƯƠNG
+        async function deleteChapter(sIdx, cIdx) {
+            if (confirm('Xóa chương này cùng toàn bộ đề thi bên trong?')) {
+                appData.subjects[sIdx].chapters.splice(cIdx, 1);
+                await saveAppDataToCloud();
+                renderHome();
+            }
+        }
+
         function toggleSubjectCollapse(sIdx) {
             let current = collapsedSubjects[sIdx] !== undefined ? collapsedSubjects[sIdx] : true;
             collapsedSubjects[sIdx] = !current;
@@ -707,15 +772,6 @@
             let key = `${sIdx}_${cIdx}`;
             let current = collapsedChapters[key] !== undefined ? collapsedChapters[key] : true;
             collapsedChapters[key] = !current;
-            renderHome();
-        }
-
-        async function moveChapter(sIdx, cIdx, direction) {
-            let chapters = appData.subjects[sIdx].chapters;
-            let targetIdx = cIdx + direction;
-            if (targetIdx < 0 || targetIdx >= chapters.length) return;
-            let temp = chapters[cIdx]; chapters[cIdx] = chapters[targetIdx]; chapters[targetIdx] = temp;
-            await saveAppDataToCloud();
             renderHome();
         }
 
@@ -746,23 +802,19 @@
             appData.subjects.forEach((s, idx) => { selectSubj.innerHTML += `<option value="${idx}">${s.name}</option>`; });
             document.getElementById('modal-input-folder').value = '';
             document.getElementById('modal-input-docs').value = '';
-            document.getElementById('modal-input-bulk').value = '';
             document.getElementById('modal-exam').classList.remove('hidden');
         }
         function closeCreateExamModal() { document.getElementById('modal-exam').classList.add('hidden'); }
 
-        // HÀM TỰ ĐỘNG PHÂN TÍCH VÀ SẮP XẾP FOLDER WORD
         async function saveNewExam() {
             const sIdx = document.getElementById('modal-select-subject').value;
             const folderInput = document.getElementById('modal-input-folder');
             const fileInput = document.getElementById('modal-input-docs');
-            const bulkText = document.getElementById('modal-input-bulk').value.trim();
 
             if (sIdx === "") return alert('Vui lòng chọn môn học!');
             let subj = appData.subjects[sIdx];
             let processedCount = 0;
 
-            // Xử lý tải lên FOLDER chứa file Word
             if (folderInput.files && folderInput.files.length > 0) {
                 for (let file of folderInput.files) {
                     if (!file.name.endsWith('.docx')) continue;
@@ -771,31 +823,25 @@
                         let result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
                         let questions = parseBulkQuestions(result.value);
                         if (questions.length > 0) {
-                            // Tự động nhận diện tên Chương và Tên Bài từ đường dẫn thư mục hoặc tên file
-                            // Ví dụ đường dẫn webkitRelativePath: "Noi_Co_So/Chuong_1_Tieu_Hoa/Bai_1.docx" hoặc tên file "Chương 1 - Bài 1.docx"
                             let pathParts = file.webkitRelativePath ? file.webkitRelativePath.split('/') : [file.name];
-                            let chapterName = "Chương mặc định";
+                            let chapterName = "Chương 1";
                             let examTitle = file.name.replace(/\.[^/.]+$/, "");
 
                             if (pathParts.length > 1) {
-                                // Nếu nằm trong thư mục con, lấy tên thư mục làm tên chương
                                 chapterName = pathParts[pathParts.length - 2].replace(/[_]/g, ' ');
                             }
 
-                            // Quét tìm từ khóa "Chương" hoặc "Chapter" trong tên file hoặc tên thư mục
                             let matchChap = (file.webkitRelativePath + " " + examTitle).match(/(Chương\s*\d+|Chapter\s*\d+)/i);
                             if (matchChap) {
                                 chapterName = matchChap[0].charAt(0).toUpperCase() + matchChap[0].slice(1);
                             }
 
-                            // Tìm hoặc tạo mới Chương tương ứng
                             let targetChapter = subj.chapters.find(c => c.chapterName.toLowerCase() === chapterName.toLowerCase());
                             if (!targetChapter) {
                                 targetChapter = { chapterName, exams: [] };
                                 subj.chapters.push(targetChapter);
                             }
 
-                            // Kiểm tra xem đề đã tồn tại chưa để tránh trùng lặp
                             let existingExam = targetChapter.exams.find(e => e.title === examTitle);
                             if (!existingExam) {
                                 targetChapter.exams.push({
@@ -806,13 +852,12 @@
                                 processedCount++;
                             }
                         }
-                    } catch (e) { console.error("Lỗi đọc file:", file.name, e); }
+                    } catch (e) {}
                 }
             }
 
-            // Xử lý file đơn lẻ
             if (fileInput.files && fileInput.files.length > 0) {
-                let targetChapter = subj.chapters.find(c => c.chapterName.toLowerCase() === "chương mặc định".toLowerCase());
+                let targetChapter = subj.chapters.find(c => c.chapterName.toLowerCase() === "chương 1".toLowerCase());
                 if (!targetChapter) {
                     targetChapter = { chapterName: "Chương 1", exams: [] };
                     subj.chapters.push(targetChapter);
@@ -834,27 +879,12 @@
                 }
             }
 
-            // Xử lý dán text thủ công
-            if (bulkText) {
-                let questions = parseBulkQuestions(bulkText);
-                if (questions.length > 0) {
-                    let targetChapter = subj.chapters[0] || { chapterName: "Chương 1", exams: [] };
-                    if (!subj.chapters.includes(targetChapter)) subj.chapters.push(targetChapter);
-                    targetChapter.exams.push({
-                        id: 'ex_' + Date.now() + Math.random(),
-                        title: "Đề thi nhanh " + new Date().toLocaleDateString(),
-                        questions
-                    });
-                    processedCount++;
-                }
-            }
-
-            if (processedCount === 0) return alert('Không tìm thấy dữ liệu hợp lệ để nhập!');
+            if (processedCount === 0) return alert('Không tìm thấy dữ liệu hợp lệ!');
 
             await saveAppDataToCloud();
             closeCreateExamModal();
             renderHome();
-            alert(`Đã tự động phân loại và nhập thành công ${processedCount} đề thi vào hệ thống!`);
+            alert(`Đã nhập thành công ${processedCount} bài học!`);
         }
 
         function parseBulkQuestions(text) {
