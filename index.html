@@ -347,6 +347,8 @@
         let collapsedChapters = {};
         let renameTarget = null;
         let syncTimeout = null;
+        let appDataUnsub = null;
+        let usersUnsub = null;
 
         const ADMIN_PASSWORD = "212696";
 
@@ -361,7 +363,7 @@
             } else {
                 document.getElementById('modal-auth').classList.add('hidden');
                 updateNavbarUser();
-                await loadAppData();
+                startAppDataRealtimeSync();
                 await loadUserPersonalData();
             }
         };
@@ -404,7 +406,7 @@
                     localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
                     document.getElementById('modal-auth').classList.add('hidden');
                     updateNavbarUser();
-                    await loadAppData();
+                    startAppDataRealtimeSync();
                     await loadUserPersonalData();
                     return;
                 }
@@ -426,7 +428,7 @@
                             localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
                             document.getElementById('modal-auth').classList.add('hidden');
                             updateNavbarUser();
-                            await loadAppData();
+                            startAppDataRealtimeSync();
                             await loadUserPersonalData();
                             return;
                         }
@@ -474,6 +476,7 @@
         }
 
         function logoutAccount() {
+            if (appDataUnsub) appDataUnsub();
             localStorage.removeItem("vmu_current_user");
             currentUser = null;
             document.getElementById('auth-username').value = '';
@@ -481,54 +484,50 @@
             document.getElementById('modal-auth').classList.remove('hidden');
         }
 
-        async function openUsersModal() {
+        function openUsersModal() {
             if (!currentUser || currentUser.role !== 'admin') return;
             const container = document.getElementById('users-list-container');
-            container.innerHTML = `<p class="text-sm text-slate-400 text-center py-4">Đang tải...</p>`;
+            container.innerHTML = `<p class="text-sm text-slate-400 text-center py-4">Đang kết nối Realtime...</p>`;
             document.getElementById('modal-users').classList.remove('hidden');
+
+            if (usersUnsub) usersUnsub();
 
             try {
                 if (window.firebaseDB) {
                     let colRef = window.firebaseCollection(window.firebaseDB, "users_list");
-                    let querySnap = await window.firebaseGetDocs(colRef);
-                    let html = '';
-                    querySnap.forEach((docSnap) => {
-                        let u = docSnap.data();
-                        let isPending = u.status === 'pending';
-                        html += `
-                            <div class="bg-slate-50 p-4 rounded-xl border flex justify-between items-center" id="user-row-${u.username}">
-                                <div>
-                                    <h4 class="font-bold text-slate-800">${u.username}</h4>
-                                    <span class="text-xs px-2 py-0.5 rounded-full font-semibold ${isPending ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}" id="user-status-${u.username}">${isPending ? 'Chờ duyệt' : 'Đã duyệt'}</span>
+                    // LẮNG NGHE REALTIME DANH SÁCH USER
+                    usersUnsub = window.firebaseOnSnapshot(colRef, (querySnap) => {
+                        let html = '';
+                        querySnap.forEach((docSnap) => {
+                            let u = docSnap.data();
+                            let isPending = u.status === 'pending';
+                            html += `
+                                <div class="bg-slate-50 p-4 rounded-xl border flex justify-between items-center" id="user-row-${u.username}">
+                                    <div>
+                                        <h4 class="font-bold text-slate-800">${u.username}</h4>
+                                        <span class="text-xs px-2 py-0.5 rounded-full font-semibold ${isPending ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}" id="user-status-${u.username}">${isPending ? 'Chờ duyệt' : 'Đã duyệt'}</span>
+                                    </div>
+                                    <div class="space-x-2">
+                                        ${isPending ? `<button onclick="approveUser('${u.username}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">Phê duyệt</button>` : ''}
+                                        <button onclick="deleteUser('${u.username}')" class="bg-rose-100 hover:bg-rose-200 text-rose-700 px-3 py-1.5 rounded-lg text-xs font-bold transition">Xóa</button>
+                                    </div>
                                 </div>
-                                <div class="space-x-2">
-                                    ${isPending ? `<button onclick="approveUser('${u.username}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">Phê duyệt</button>` : ''}
-                                    <button onclick="deleteUser('${u.username}')" class="bg-rose-100 hover:bg-rose-200 text-rose-700 px-3 py-1.5 rounded-lg text-xs font-bold transition">Xóa</button>
-                                </div>
-                            </div>
-                        `;
+                            `;
+                        });
+                        container.innerHTML = html || `<p class="text-sm text-slate-400 text-center py-4">Chưa có thành viên nào.</p>`;
                     });
-                    container.innerHTML = html || `<p class="text-sm text-slate-400 text-center py-4">Chưa có thành viên nào.</p>`;
                 }
             } catch(e) {
-                container.innerHTML = `<p class="text-sm text-rose-500 text-center py-4">Lỗi tải danh sách.</p>`;
+                container.innerHTML = `<p class="text-sm text-rose-500 text-center py-4">Lỗi kết nối Realtime.</p>`;
             }
         }
 
-        function closeUsersModal() { document.getElementById('modal-users').classList.add('hidden'); }
+        function closeUsersModal() { 
+            if (usersUnsub) { usersUnsub(); usersUnsub = null; }
+            document.getElementById('modal-users').classList.add('hidden'); 
+        }
 
         async function approveUser(username) {
-            let statusEl = document.getElementById(`user-status-${username}`);
-            if (statusEl) {
-                statusEl.className = "text-xs px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800";
-                statusEl.innerText = "Đã duyệt";
-            }
-            let btnParent = statusEl ? statusEl.closest('.flex') : null;
-            if (btnParent) {
-                let approveBtn = btnParent.querySelector('button');
-                if (approveBtn) approveBtn.remove();
-            }
-
             try {
                 if (window.firebaseDB) {
                     let docRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
@@ -539,9 +538,6 @@
 
         async function deleteUser(username) {
             if (confirm(`Xóa user ${username}?`)) {
-                let rowEl = document.getElementById(`user-row-${username}`);
-                if (rowEl) rowEl.remove();
-
                 try {
                     if (window.firebaseDB) {
                         let docRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
@@ -551,7 +547,9 @@
             }
         }
 
-        async function loadAppData() {
+        // ĐỒNG BỘ REALTIME TỨC THÌ TRONG DƯỚI 1 GIÂY BẰNG ONSNAPSHOT
+        function startAppDataRealtimeSync() {
+            // Hiển thị bộ nhớ đệm local trước để không giật lag giao diện
             let localData = localStorage.getItem("vmu_local_exam_backup");
             if (localData) {
                 try { 
@@ -560,44 +558,56 @@
                 } catch(err) {}
             }
 
+            if (appDataUnsub) appDataUnsub();
+
             try {
                 if (window.firebaseDB) {
                     const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
-                    const docSnap = await window.firebaseGetDoc(docRef);
-                    if (docSnap.exists()) {
-                        let cloudData = docSnap.data();
-                        let cloudStr = JSON.stringify(cloudData);
-                        if (cloudStr !== localData) {
-                            appData = cloudData;
-                            localStorage.setItem("vmu_local_exam_backup", cloudStr);
-                            renderHome();
-                        }
-                        return;
-                    }
-                }
-            } catch (e) {}
+                    
+                    // ON SNAPSHOT: Lắng nghe liên tục từ Cloud Firebase
+                    appDataUnsub = window.firebaseOnSnapshot(docRef, (docSnap) => {
+                        if (docSnap.exists()) {
+                            let cloudData = docSnap.data();
+                            let cloudStr = JSON.stringify(cloudData);
+                            let currentLocalStr = localStorage.getItem("vmu_local_exam_backup");
 
-            if (!appData.subjects || appData.subjects.length === 0) {
-                appData = {
-                    subjects: [{
-                        name: "Giải phẫu học",
-                        chapters: [{
-                            chapterName: "Chương 1: Chi trên",
-                            exams: [{
-                                id: "ex_1",
-                                title: "Bài 1: Xương khớp chi trên",
-                                questions: [{
-                                    id: 1,
-                                    questionText: "Xương nào sau đây thuộc cẳng tay?",
-                                    options: ["A. Xương cánh tay", "B. Xương quay", "C. Xương đùi", "D. Xương chày"],
-                                    correctAnswer: 1,
-                                    explanation: "Cẳng tay gồm hai xương là xương quay và xương trụ."
-                                }]
+                            if (cloudStr !== currentLocalStr) {
+                                appData = cloudData;
+                                localStorage.setItem("vmu_local_exam_backup", cloudStr);
+                                renderHome();
+                            }
+                        } else if (!appData.subjects || appData.subjects.length === 0) {
+                            initDefaultData();
+                        }
+                    }, (err) => {
+                        console.error("Lỗi đồng bộ Realtime:", err);
+                    });
+                }
+            } catch (e) {
+                if (!appData.subjects || appData.subjects.length === 0) initDefaultData();
+            }
+        }
+
+        function initDefaultData() {
+            appData = {
+                subjects: [{
+                    name: "Giải phẫu học",
+                    chapters: [{
+                        chapterName: "Chương 1: Chi trên",
+                        exams: [{
+                            id: "ex_1",
+                            title: "Bài 1: Xương khớp chi trên",
+                            questions: [{
+                                id: 1,
+                                questionText: "Xương nào sau đây thuộc cẳng tay?",
+                                options: ["A. Xương cánh tay", "B. Xương quay", "C. Xương đùi", "D. Xương chày"],
+                                correctAnswer: 1,
+                                explanation: "Cẳng tay gồm hai xương là xương quay và xương trụ."
                             }]
                         }]
                     }]
-                };
-            }
+                }]
+            };
             renderHome();
         }
 
@@ -607,14 +617,17 @@
             localStorage.setItem("vmu_local_exam_backup", jsonStr);
 
             if (syncTimeout) clearTimeout(syncTimeout);
+            // Giảm độ trễ đẩy lên Firebase còn 200ms
             syncTimeout = setTimeout(async () => {
                 try {
                     if (window.firebaseDB) {
                         const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
                         await window.firebaseSetDoc(docRef, appData);
                     }
-                } catch (e) {}
-            }, 800);
+                } catch (e) {
+                    console.error("Lỗi đẩy dữ liệu Cloud:", e);
+                }
+            }, 200);
         }
 
         async function loadUserPersonalData() {
