@@ -1,4 +1,203 @@
-async function handleLogin() {
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống Quản Lý & Ôn Thi Trắc Nghiệm VMU</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col font-sans">
+
+    <!-- NAVBAR -->
+    <nav class="bg-blue-700 text-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <span>📚</span> VMU Quiz Portal
+            </h1>
+            <div id="nav-user-info" class="flex items-center gap-3">
+                <!-- Sẽ tự động render bằng JS -->
+            </div>
+        </div>
+    </nav>
+
+    <!-- MAIN CONTAINER -->
+    <main class="max-w-7xl mx-auto p-4 flex-grow w-full">
+        <!-- Bảng điều khiển Admin (Chỉ mở khi là Admin) -->
+        <section id="admin-panel" class="hidden mb-8 bg-white p-6 rounded-xl shadow-sm border border-amber-200 bg-amber-50/30">
+            <h2 class="text-lg font-bold text-amber-800 mb-4 flex items-center gap-2">
+                <span>🛡️</span> Quản lý Người dùng & Duyệt Tài khoản (Admin)
+            </h2>
+            <div class="overflow-x-auto bg-white rounded-lg border border-gray-200">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-gray-100 text-gray-700 uppercase border-b">
+                        <tr>
+                            <th class="p-3">Tên đăng nhập</th>
+                            <th class="p-3">Họ tên</th>
+                            <th class="p-3">Quyền</th>
+                            <th class="p-3">Trạng thái</th>
+                            <th class="p-3 text-center">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-user-table-body">
+                        <!-- Render danh sách tài khoản -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Danh sách Môn học -->
+        <section class="mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-gray-800">Danh Sách Môn Học</h2>
+                <button id="btn-add-subject" onclick="showAddSubjectModal()" class="hidden bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                    + Thêm Môn Học
+                </button>
+            </div>
+            <div id="subjects-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Render thẻ môn học -->
+            </div>
+        </section>
+
+        <!-- Danh sách Đề thi của Môn được chọn -->
+        <section id="exams-section" class="hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 id="selected-subject-title" class="text-xl font-bold text-gray-800">Đề Thi</h2>
+                <button id="btn-add-exam" onclick="showAddExamModal()" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                    + Thêm Đề Thi Mới
+                </button>
+            </div>
+            <div id="exams-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Render đề thi -->
+            </div>
+        </section>
+    </main>
+
+    <!-- MODAL ĐĂNG NHẬP / ĐĂNG KÝ -->
+    <div id="modal-auth" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 hidden">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <!-- Tabs -->
+            <div class="flex border-b mb-4">
+                <button id="tab-login-btn" onclick="switchAuthTab('login')" class="flex-1 py-2 font-semibold border-b-2 border-blue-600 text-blue-600">Đăng Nhập</button>
+                <button id="tab-register-btn" onclick="switchAuthTab('register')" class="flex-1 py-2 font-semibold text-gray-500 hover:text-gray-700">Đăng Ký</button>
+            </div>
+
+            <!-- Form Đăng Nhập -->
+            <div id="form-login" class="space-y-4">
+                <div id="auth-error-msg" class="hidden p-3 bg-red-100 text-red-700 text-sm rounded-lg"></div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Tên đăng nhập</label>
+                    <input type="text" id="auth-username" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>
+                    <input type="password" id="auth-password" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <button onclick="handleLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition">Đăng Nhập</button>
+            </div>
+
+            <!-- Form Đăng Ký -->
+            <div id="form-register" class="space-y-4 hidden">
+                <div id="reg-error-msg" class="hidden p-3 bg-red-100 text-red-700 text-sm rounded-lg"></div>
+                <div id="reg-success-msg" class="hidden p-3 bg-emerald-100 text-emerald-700 text-sm rounded-lg"></div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Họ và tên</label>
+                    <input type="text" id="reg-fullname" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Tên đăng nhập</label>
+                    <input type="text" id="reg-username" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>
+                    <input type="password" id="reg-password" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <button onclick="handleRegister()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg font-medium transition">Đăng Ký Tài Khoản</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FIREBASE INITIALIZATION MODULE -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, doc, getDoc, setDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // CẤU HÌNH FIREBASE CỦA BẠN (Thay thế các giá trị bên dưới)
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // Mount các hàm Firestore lên window để script bên dưới gọi trực tiếp
+        window.firebaseDB = db;
+        window.firebaseDoc = doc;
+        window.firebaseGetDoc = getDoc;
+        window.firebaseSetDoc = setDoc;
+        window.firebaseCollection = collection;
+        window.firebaseGetDocs = getDocs;
+
+        // Khởi chạy phiên làm việc của ứng dụng sau khi gắn xong SDK
+        if (typeof window.initAppSession === 'function') {
+            window.initAppSession();
+        }
+    </script>
+
+    <!-- APPLOGIC & CRUD JS -->
+    <script>
+        // State Toàn cục
+        let currentUser = null;
+        let appData = { subjects: [] };
+        let userPersonalData = { mistakes: [], habits: {} };
+        let currentSubjectId = null;
+        const ADMIN_PASSWORD = "admin123"; // Mật khẩu cứng tài khoản Admin
+
+        // --- 1. KHỞI TẠO VÀ XÁC THỰC ---
+        async function initAppSession() {
+            let savedUser = localStorage.getItem("vmu_current_user");
+            if (savedUser) {
+                try {
+                    currentUser = JSON.parse(savedUser);
+                } catch(e) { currentUser = null; }
+            }
+
+            if (!currentUser) {
+                document.getElementById('modal-auth').classList.remove('hidden');
+            } else {
+                updateNavbarUser();
+                await loadAppData();
+                await loadUserPersonalData();
+                if (currentUser.role === 'admin') {
+                    renderAdminPanel();
+                }
+            }
+        }
+
+        function switchAuthTab(tab) {
+            let loginForm = document.getElementById('form-login');
+            let regForm = document.getElementById('form-register');
+            let loginBtn = document.getElementById('tab-login-btn');
+            let regBtn = document.getElementById('tab-register-btn');
+
+            if (tab === 'login') {
+                loginForm.classList.remove('hidden');
+                regForm.classList.add('hidden');
+                loginBtn.className = "flex-1 py-2 font-semibold border-b-2 border-blue-600 text-blue-600";
+                regBtn.className = "flex-1 py-2 font-semibold text-gray-500 hover:text-gray-700";
+            } else {
+                loginForm.classList.add('hidden');
+                regForm.classList.remove('hidden');
+                regBtn.className = "flex-1 py-2 font-semibold border-b-2 border-emerald-600 text-emerald-600";
+                loginBtn.className = "flex-1 py-2 font-semibold text-gray-500 hover:text-gray-700";
+            }
+        }
+
+        async function handleLogin() {
             let user = document.getElementById('auth-username').value.trim();
             let pass = document.getElementById('auth-password').value;
             let errEl = document.getElementById('auth-error-msg');
@@ -10,20 +209,19 @@ async function handleLogin() {
                 return;
             }
 
-            // Xử lý Admin đăng nhập bằng Mật khẩu cứng
-            if (user.toLowerCase() === 'admin' || pass === ADMIN_PASSWORD) {
-                if (pass === ADMIN_PASSWORD) {
-                    currentUser = { username: user, role: 'admin', status: 'approved' };
-                    localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
-                    document.getElementById('modal-auth').classList.add('hidden');
-                    updateNavbarUser();
-                    await loadAppData();
-                    await loadUserPersonalData();
-                    return;
-                }
+            // Đăng nhập Admin
+            if (user.toLowerCase() === 'admin' && pass === ADMIN_PASSWORD) {
+                currentUser = { username: user, fullname: "Quản trị viên", role: 'admin', status: 'approved' };
+                localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
+                document.getElementById('modal-auth').classList.add('hidden');
+                updateNavbarUser();
+                await loadAppData();
+                await loadUserPersonalData();
+                renderAdminPanel();
+                return;
             }
 
-            // Xử lý User thường kiểm tra trên Firebase Firestore
+            // Đăng nhập User thường
             try {
                 if (window.firebaseDB) {
                     let docRef = window.firebaseDoc(window.firebaseDB, "users_list", user);
@@ -36,13 +234,12 @@ async function handleLogin() {
                                 errEl.classList.remove('hidden');
                                 return;
                             }
-                            currentUser = { username: user, role: 'member', status: 'approved' };
+                            currentUser = { username: user, fullname: data.fullname || user, role: 'member', status: 'approved' };
                             localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
                             document.getElementById('modal-auth').classList.add('hidden');
                             updateNavbarUser();
                             await loadAppData();
                             await loadUserPersonalData();
-                            return;
                         } else {
                             errEl.innerText = "Mật khẩu không chính xác!";
                             errEl.classList.remove('hidden');
@@ -52,7 +249,7 @@ async function handleLogin() {
                         errEl.classList.remove('hidden');
                     }
                 } else {
-                    errEl.innerText = "Không thể kết nối đến cơ sở dữ liệu Firebase!";
+                    errEl.innerText = "Chưa kết nối CSDL Firebase!";
                     errEl.classList.remove('hidden');
                 }
             } catch (err) {
@@ -61,3 +258,349 @@ async function handleLogin() {
                 errEl.classList.remove('hidden');
             }
         }
+
+        async function handleRegister() {
+            let user = document.getElementById('reg-username').value.trim();
+            let pass = document.getElementById('reg-password').value;
+            let fullname = document.getElementById('reg-fullname').value.trim();
+            let errEl = document.getElementById('reg-error-msg');
+            let successEl = document.getElementById('reg-success-msg');
+
+            errEl.classList.add('hidden');
+            successEl.classList.add('hidden');
+
+            if (!user || !pass) {
+                errEl.innerText = "Vui lòng điền đầy đủ Tên đăng nhập và Mật khẩu!";
+                errEl.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                if (!window.firebaseDB) throw new Error("Chưa kết nối CSDL!");
+
+                let userDocRef = window.firebaseDoc(window.firebaseDB, "users_list", user);
+                let userSnap = await window.firebaseGetDoc(userDocRef);
+
+                if (userSnap.exists()) {
+                    errEl.innerText = "Tên đăng nhập này đã tồn tại trên hệ thống!";
+                    errEl.classList.remove('hidden');
+                    return;
+                }
+
+                let newUserObj = {
+                    username: user,
+                    password: pass,
+                    fullname: fullname || user,
+                    role: 'member',
+                    status: 'pending',
+                    createdAt: new Date().toISOString()
+                };
+
+                await window.firebaseSetDoc(userDocRef, newUserObj);
+
+                successEl.innerText = "Đăng ký thành công! Vui lòng chờ Admin phê duyệt tài khoản.";
+                successEl.classList.remove('hidden');
+
+                document.getElementById('reg-username').value = '';
+                document.getElementById('reg-password').value = '';
+                document.getElementById('reg-fullname').value = '';
+            } catch (err) {
+                console.error("Lỗi đăng ký:", err);
+                errEl.innerText = "Đã xảy ra lỗi khi tạo tài khoản: " + err.message;
+                errEl.classList.remove('hidden');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem("vmu_current_user");
+            currentUser = null;
+            location.reload();
+        }
+
+        function updateNavbarUser() {
+            let container = document.getElementById('nav-user-info');
+            if (currentUser) {
+                container.innerHTML = `
+                    <span class="text-sm font-medium">Xin chào, <b class="underline">${currentUser.fullname || currentUser.username}</b> (${currentUser.role})</span>
+                    <button onclick="logout()" class="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded transition">Đăng xuất</button>
+                `;
+                if (currentUser.role === 'admin') {
+                    document.getElementById('btn-add-subject').classList.remove('hidden');
+                    document.getElementById('btn-add-exam').classList.remove('hidden');
+                }
+            } else {
+                container.innerHTML = `<button onclick="document.getElementById('modal-auth').classList.remove('hidden')" class="bg-white text-blue-700 font-semibold text-xs px-3 py-1.5 rounded shadow hover:bg-gray-100 transition">Đăng Nhập</button>`;
+            }
+        }
+
+        // --- 2. CÁC HÀM CRUD APP DATA (FIRESTORE) ---
+        async function loadAppData() {
+            try {
+                if (!window.firebaseDB) return;
+                let docRef = window.firebaseDoc(window.firebaseDB, "app_data", "main_store");
+                let snap = await window.firebaseGetDoc(docRef);
+
+                if (snap.exists()) {
+                    appData = snap.data();
+                } else {
+                    appData = { subjects: [] };
+                    await syncAppData();
+                }
+                renderSubjects();
+            } catch (err) {
+                console.error("Lỗi khi tải appData:", err);
+            }
+        }
+
+        async function syncAppData() {
+            try {
+                if (!window.firebaseDB) throw new Error("Kết nối Firebase bị ngắt!");
+                let docRef = window.firebaseDoc(window.firebaseDB, "app_data", "main_store");
+                await window.firebaseSetDoc(docRef, appData);
+                console.log("Đã đồng bộ appData lên Firebase!");
+                return true;
+            } catch (err) {
+                console.error("Lỗi khi đồng bộ appData:", err);
+                alert("Lỗi lưu dữ liệu: " + err.message);
+                return false;
+            }
+        }
+
+        async function saveSubject(subjectData) {
+            try {
+                if (!appData.subjects) appData.subjects = [];
+                let index = appData.subjects.findIndex(s => s.id === subjectData.id);
+                if (index >= 0) {
+                    appData.subjects[index] = { ...appData.subjects[index], ...subjectData };
+                } else {
+                    if (!subjectData.id) subjectData.id = "sub_" + Date.now();
+                    subjectData.exams = [];
+                    appData.subjects.push(subjectData);
+                }
+                let isSuccess = await syncAppData();
+                if (isSuccess) renderSubjects();
+                return isSuccess;
+            } catch (err) {
+                console.error("Lỗi lưu môn học:", err);
+                return false;
+            }
+        }
+
+        async function deleteSubject(subjectId) {
+            if (!confirm("Xóa môn học này sẽ xóa toàn bộ đề thi bên trong. Tiếp tục?")) return;
+            try {
+                appData.subjects = appData.subjects.filter(s => s.id !== subjectId);
+                let isSuccess = await syncAppData();
+                if (isSuccess) {
+                    document.getElementById('exams-section').classList.add('hidden');
+                    renderSubjects();
+                }
+            } catch (err) {
+                console.error("Lỗi xóa môn học:", err);
+            }
+        }
+
+        async function saveNewExam(subjectId, examData) {
+            try {
+                let targetSubject = appData.subjects.find(s => s.id === subjectId);
+                if (!targetSubject) return false;
+                if (!targetSubject.exams) targetSubject.exams = [];
+
+                let examIndex = targetSubject.exams.findIndex(e => e.id === examData.id);
+                if (examIndex >= 0) {
+                    targetSubject.exams[examIndex] = { ...targetSubject.exams[examIndex], ...examData, updatedAt: new Date().toISOString() };
+                } else {
+                    if (!examData.id) examData.id = "exam_" + Date.now();
+                    examData.createdAt = new Date().toISOString();
+                    targetSubject.exams.push(examData);
+                }
+
+                let isSuccess = await syncAppData();
+                if (isSuccess) {
+                    alert("Đã lưu đề thi thành công!");
+                    renderExams(subjectId);
+                    return true;
+                }
+            } catch (err) {
+                console.error("Lỗi lưu đề thi:", err);
+            }
+            return false;
+        }
+
+        async function deleteExam(subjectId, examId) {
+            if (!confirm("Bạn có chắc chắn muốn xóa đề thi này không?")) return;
+            try {
+                let targetSubject = appData.subjects.find(s => s.id === subjectId);
+                if (!targetSubject || !targetSubject.exams) return;
+
+                targetSubject.exams = targetSubject.exams.filter(e => e.id !== examId);
+                let isSuccess = await syncAppData();
+                if (isSuccess) renderExams(subjectId);
+            } catch (err) {
+                console.error("Lỗi xóa đề thi:", err);
+            }
+        }
+
+        // --- 3. DỮ LIỆU CÁ NHÂN USER ---
+        async function loadUserPersonalData() {
+            if (!currentUser || !window.firebaseDB) return;
+            try {
+                let docRef = window.firebaseDoc(window.firebaseDB, "user_data", currentUser.username);
+                let snap = await window.firebaseGetDoc(docRef);
+                if (snap.exists()) {
+                    userPersonalData = snap.data();
+                } else {
+                    userPersonalData = { mistakes: [], habits: {} };
+                }
+            } catch (e) {
+                console.error("Lỗi tải userPersonalData:", e);
+            }
+        }
+
+        async function syncUserPersonalData() {
+            if (!currentUser || !window.firebaseDB) return;
+            try {
+                let docRef = window.firebaseDoc(window.firebaseDB, "user_data", currentUser.username);
+                await window.firebaseSetDoc(docRef, userPersonalData);
+            } catch (e) {
+                console.error("Lỗi lưu userPersonalData:", e);
+            }
+        }
+
+        // --- 4. ADMIN USER MANAGEMENT ---
+        async function fetchAllUsers() {
+            if (!currentUser || currentUser.role !== 'admin') return [];
+            try {
+                let colRef = window.firebaseCollection(window.firebaseDB, "users_list");
+                let snap = await window.firebaseGetDocs(colRef);
+                let users = [];
+                snap.forEach(doc => users.push(doc.data()));
+                return users;
+            } catch (err) {
+                console.error("Lỗi lấy danh sách user:", err);
+                return [];
+            }
+        }
+
+        async function updateUserStatus(username, newStatus) {
+            try {
+                let userDocRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
+                await window.firebaseSetDoc(userDocRef, { status: newStatus }, { merge: true });
+                alert(`Đã cập nhật trạng thái tài khoản ${username} thành: ${newStatus}`);
+                renderAdminPanel();
+            } catch (err) {
+                console.error("Lỗi cập nhật trạng thái:", err);
+            }
+        }
+
+        async function renderAdminPanel() {
+            document.getElementById('admin-panel').classList.remove('hidden');
+            let tbody = document.getElementById('admin-user-table-body');
+            tbody.innerHTML = '<tr><td colspan="5" class="p-3 text-center text-gray-500">Đang tải...</td></tr>';
+
+            let users = await fetchAllUsers();
+            if (users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="p-3 text-center text-gray-500">Chưa có người dùng nào.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = users.map(u => `
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="p-3 font-semibold">${u.username}</td>
+                    <td class="p-3">${u.fullname || '-'}</td>
+                    <td class="p-3"><span class="px-2 py-0.5 text-xs rounded ${u.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700'}">${u.role}</span></td>
+                    <td class="p-3">
+                        <span class="px-2 py-0.5 text-xs rounded ${u.status === 'approved' ? 'bg-green-100 text-green-700' : (u.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700')}">
+                            ${u.status}
+                        </span>
+                    </td>
+                    <td class="p-3 text-center space-x-2">
+                        ${u.status !== 'approved' ? `<button onclick="updateUserStatus('${u.username}', 'approved')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2.5 py-1 rounded">Duyệt</button>` : ''}
+                        ${u.status !== 'rejected' ? `<button onclick="updateUserStatus('${u.username}', 'rejected')" class="bg-red-600 hover:bg-red-700 text-white text-xs px-2.5 py-1 rounded">Từ Chối</button>` : ''}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // --- 5. RENDER GIAO DIỆN MÔN HỌC & ĐỀ THI ---
+        function renderSubjects() {
+            let container = document.getElementById('subjects-container');
+            if (!appData.subjects || appData.subjects.length === 0) {
+                container.innerHTML = `<div class="col-span-full p-6 text-center text-gray-500 bg-white rounded-xl border">Chưa có môn học nào được khởi tạo.</div>`;
+                return;
+            }
+
+            container.innerHTML = appData.subjects.map(s => `
+                <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-800">${s.name}</h3>
+                        <p class="text-xs text-gray-500 mt-1">${s.exams ? s.exams.length : 0} đề thi khả dụng</p>
+                    </div>
+                    <div class="mt-4 flex gap-2">
+                        <button onclick="selectSubject('${s.id}')" class="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-600 font-medium text-sm py-2 rounded-lg transition">Xem Đề Thi</button>
+                        ${currentUser && currentUser.role === 'admin' ? `
+                            <button onclick="deleteSubject('${s.id}')" class="bg-red-50 hover:bg-red-100 text-red-600 text-sm px-3 py-2 rounded-lg transition">Xóa</button>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function selectSubject(subjectId) {
+            currentSubjectId = subjectId;
+            let subject = appData.subjects.find(s => s.id === subjectId);
+            if (!subject) return;
+
+            document.getElementById('selected-subject-title').innerText = `Đề Thi Môn: ${subject.name}`;
+            document.getElementById('exams-section').classList.remove('hidden');
+            renderExams(subjectId);
+        }
+
+        function renderExams(subjectId) {
+            let container = document.getElementById('exams-container');
+            let subject = appData.subjects.find(s => s.id === subjectId);
+
+            if (!subject || !subject.exams || subject.exams.length === 0) {
+                container.innerHTML = `<div class="col-span-full p-6 text-center text-gray-500 bg-white rounded-xl border">Chưa có đề thi nào trong môn này.</div>`;
+                return;
+            }
+
+            container.innerHTML = subject.exams.map(e => `
+                <div class="bg-white p-4 rounded-xl border border-gray-200 flex justify-between items-center">
+                    <div>
+                        <h4 class="font-bold text-gray-800">${e.title}</h4>
+                        <p class="text-xs text-gray-500">Thời gian: ${e.timeLimit || 45} phút | ${e.questions ? e.questions.length : 0} câu hỏi</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="alert('Bắt đầu làm đề: ${e.title}')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition">Làm Bài</button>
+                        ${currentUser && currentUser.role === 'admin' ? `
+                            <button onclick="deleteExam('${subjectId}', '${e.id}')" class="bg-red-50 text-red-600 text-xs px-2.5 py-2 rounded-lg hover:bg-red-100 transition">Xóa</button>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // --- HELPER DIALOGS ---
+        async function showAddSubjectModal() {
+            let name = prompt("Nhập tên môn học mới:");
+            if (name && name.trim()) {
+                await saveSubject({ name: name.trim() });
+            }
+        }
+
+        async function showAddExamModal() {
+            if (!currentSubjectId) return;
+            let title = prompt("Nhập tên đề thi mới:");
+            let timeLimit = prompt("Thời gian làm bài (phút):", "45");
+            if (title && title.trim()) {
+                await saveNewExam(currentSubjectId, {
+                    title: title.trim(),
+                    timeLimit: parseInt(timeLimit) || 45,
+                    questions: []
+                });
+            }
+        }
+    </script>
+</body>
+</html>
