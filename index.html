@@ -40,7 +40,6 @@
         window.firebaseUpdateDoc = updateDoc;
         window.firebaseOnSnapshot = onSnapshot;
 
-        // Khởi chạy ứng dụng khi DOM đã sẵn sàng
         window.addEventListener('DOMContentLoaded', () => {
             if (typeof window.initAppSession === 'function') {
                 window.initAppSession();
@@ -186,7 +185,7 @@
         </div>
     </main>
 
-    <!-- MODAL: ĐĂNG NHẬP / ĐĂNG KÝ -->
+    <!-- MODAL AUTH & USERS -->
     <div id="modal-auth" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl space-y-6">
             <div class="text-center space-y-2">
@@ -214,7 +213,6 @@
         </div>
     </div>
 
-    <!-- MODAL: QUẢN LÝ USERS -->
     <div id="modal-users" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
             <div class="flex justify-between items-center border-b pb-3">
@@ -228,7 +226,6 @@
         </div>
     </div>
 
-    <!-- MODAL: THÊM MÔN HỌC -->
     <div id="modal-subject" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <h3 class="text-lg font-bold text-slate-900">Thêm Môn Học Mới</h3>
@@ -240,7 +237,6 @@
         </div>
     </div>
 
-    <!-- MODAL: TẠO ĐỀ / TẢI NHIỀU FOLDER HOẶC FILE WORD -->
     <div id="modal-exam" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center border-b pb-3">
@@ -253,14 +249,12 @@
                     <select id="modal-select-subject" onchange="updateChapterDropdown()" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></select>
                 </div>
                 
-                <!-- PHẦN 1: TẢI NHIỀU FOLDER -->
                 <div class="p-5 bg-[#FFF5F8] border-2 border-dashed border-[#FFB6C1] rounded-2xl space-y-3">
                     <label class="block font-bold text-slate-800"><i class="fa-solid fa-folder-open text-[#FF4081] mr-2"></i> Cách 1: Tải lên các Folder chứa bài học (.docx)</label>
                     <p class="text-xs text-slate-500">💡 Tên từng folder sẽ tự động làm tên Chương.</p>
                     <input type="file" id="modal-input-folder" accept=".docx" multiple webkitdirectory directory class="w-full text-sm text-slate-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-[#D6336C] file:text-white hover:file:bg-[#FF4081] cursor-pointer">
                 </div>
 
-                <!-- PHẦN 2: TẢI FILE ĐƠN LẺ -->
                 <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                     <label class="block font-bold text-slate-800"><i class="fa-solid fa-file-word text-blue-600 mr-2"></i> Cách 2: Chọn các file Word (.docx) đơn lẻ</label>
                     
@@ -288,7 +282,6 @@
         </div>
     </div>
 
-    <!-- MODAL CHỈNH SỬA TÊN CHƯƠNG / TÊN BÀI -->
     <div id="modal-rename" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4">
             <h3 id="rename-modal-title" class="text-lg font-bold text-slate-900">Đổi tên</h3>
@@ -300,7 +293,6 @@
         </div>
     </div>
 
-    <!-- MODAL CHỈNH SỬA CÂU HỎI -->
     <div id="modal-edit-question" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center border-b pb-3">
@@ -322,7 +314,7 @@
                         <option value="0">A</option><option value="1">B</option><option value="2">C</option><option value="3">D</option>
                     </select>
                 </div>
-                <div><label class="block font-medium text-slate-700 mb-1">Giải thích chi tiết</label><textarea id="edit-explanation" rows="2" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></textarea></div>
+                <div><label class="block font-medium text-slate-700 mb-1">Giải thích chi tiết</label><textarea id="edit-explanation" rows="3" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]" placeholder="Nhập giải thích cho câu hỏi này..."></textarea></div>
             </div>
             <div class="flex justify-end space-x-3 pt-2 border-t">
                 <button onclick="closeEditQuestionModal()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-sm font-medium">Hủy</button>
@@ -331,7 +323,7 @@
         </div>
     </div>
 
-    <!-- Script xử lý logic ứng dụng -->
+    <!-- Script xử lý ứng dụng -->
     <script>
         let appData = { subjects: [] };
         let userPersonalData = { mistakes: [], habits: {} };
@@ -546,7 +538,6 @@
             }
         }
 
-        // ĐỒNG BỘ REALTIME TỨC THÌ BẰNG ONSNAPSHOT - CÓ HIỂN THỊ CACHE TRƯỚC NÊN KHÔNG LO BỊ TRẮNG MÀN HÌNH
         function startAppDataRealtimeSync() {
             let localData = localStorage.getItem("vmu_local_exam_backup");
             if (localData) {
@@ -680,7 +671,7 @@
                 renderMistakes();
             } else if (tabId === 'habit') {
                 document.getElementById('tab-habit').classList.remove('hidden');
-                document.getElementById('nav-habit').classList.add('bg-[#FF4081]');
+                document.getElementById('nav-[#FF4081]');
                 renderHabitTracker();
             }
         }
@@ -992,60 +983,71 @@
             alert(`Thành công! Đã nhập ${processedCount} bài học mới.`);
         }
 
+        // BỘ TÁCH CÂU HỎI THUẬT TOÁN TỐI ƯU & TỰ ĐỘNG KHỞI TẠO LÀM SẠCH CHỮ TRÙNG
         function parseBulkQuestions(text) {
             if (!text) return [];
 
             let rawText = text.replace(/\r\n/g, ' ').replace(/\n/g, ' ').replace(/\r/g, ' ');
-            let blocks = rawText.split(/(?=(?:Q\s*[:\.]|Q\s*\d+[\.:]|Câu\s*\d+[\.:]|Question\s*\d+[\.:]))/i);
+            let blocks = rawText.split(/(?=(?:Q\s*[:\.]|Q\s*\d+[\.:]|Câu\s*\d+[\.:]|Question\s*\d+[\.:]|\d+[\.:]\s+[A-Z]))/i);
             let questions = [];
 
             blocks.forEach(block => {
                 block = block.trim();
                 if (!block) return;
 
-                let match = block.match(/^(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:])?\s*(.*?)(?=\s*A[\.\)\:]\s*)(.*?)(?=\s*B[\.\)\:]\s*)(.*?)(?=\s*C[\.\)\:]\s*)(.*?)(?=\s*D[\.\)\:]\s*)(.*?)(?=\s*(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|ĐA\s*[:\.]|\*?[A-D][\.\)\:]|$))(?:(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|ĐA\s*[:\.]|\*?[A-D][\.\)\:])\s*([A-D])[\.\)\:]?\s*)?(?:(?:E\s*[:\.]|Exp\s*[:\.]|Explanation\s*[:\.]|Giải\s*thích\s*[:\.]|\*)\s*(.*))?$/i);
+                let match = block.match(/^(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:])?\s*(.*?)(?=\s*A[\.\)\:]\s*)(.*?)(?=\s*B[\.\)\:]\s*)(.*?)(?=\s*C[\.\)\:]\s*)(.*?)(?=\s*D[\.\)\:]\s*)(.*?)(?=\s*(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|ĐA\s*[:\.]|E\s*[:\.]|Exp\s*[:\.]|Giải\s*thích\s*[:\.]|\*?[A-D][\.\)\:]|$))(?:(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|ĐA\s*[:\.]|\*?[A-D][\.\)\:])\s*([A-D])[\.\)\:]?\s*)?(?:(?:E\s*[:\.]|Exp\s*[:\.]|Explanation\s*[:\.]|Giải\s*thích\s*[:\.]|\*)\s*(.*))?$/i);
 
                 if (match) {
                     let qText = match[1].replace(/^(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:])\s*/i, '').trim();
-                    let optA = "A. " + match[2].replace(/^A[\.\)\:]\s*/i, '').trim();
-                    let optB = "B. " + match[3].replace(/^B[\.\)\:]\s*/i, '').trim();
-                    let optC = "C. " + match[4].replace(/^C[\.\)\:]\s*/i, '').trim();
-                    let optDText = match[5].trim();
                     
-                    optDText = optDText.replace(/\s*(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|E\s*[:\.]|Giải\s*thích\s*[:\.]).*/i, '').trim();
-                    let optD = "D. " + optDText.replace(/^D[\.\)\:]\s*/i, '').trim();
+                    // Hàm làm sạch triệt để tiền tố lặp A., B., C., D.
+                    let cleanOpt = (str) => {
+                        return str.replace(/^(?:[A-D][\.\)\:]\s*)+/i, '').trim();
+                    };
 
-                    let ansChar = match[6] ? match[6].toUpperCase() : 'A';
-                    let correctIdx = ansChar.charCodeAt(0) - 65;
-                    if (correctIdx < 0 || correctIdx > 3) correctIdx = 0;
+                    let rawA = cleanOpt(match[2]);
+                    let rawB = cleanOpt(match[3]);
+                    let rawC = cleanOpt(match[4]);
+                    let rawDText = match[5].trim().replace(/\s*(?:A\s*[:\.]|Ans\s*[:\.]|Answer\s*[:\.]|Đáp\s*án\s*[:\.]|Key\s*[:\.]|E\s*[:\.]|Giải\s*thích\s*[:\.]).*/i, '').trim();
+                    let rawD = cleanOpt(rawDText);
+
+                    let rawOpts = [rawA, rawB, rawC, rawD];
+                    let detectedCorrectIdx = -1;
+
+                    // Tự động kiểm tra đáp án đúng bằng dấu * ở cuối đáp án (như C. Vùng dưới đồi *)
+                    rawOpts = rawOpts.map((opt, idx) => {
+                        if (opt.endsWith('*') || opt.includes('*')) {
+                            detectedCorrectIdx = idx;
+                            return opt.replace(/\*/g, '').trim();
+                        }
+                        return opt;
+                    });
+
+                    // Nếu không có dấu *, lấy theo key đáp án ở cuối câu
+                    if (detectedCorrectIdx === -1) {
+                        let ansChar = match[6] ? match[6].toUpperCase() : 'A';
+                        detectedCorrectIdx = ansChar.charCodeAt(0) - 65;
+                        if (detectedCorrectIdx < 0 || detectedCorrectIdx > 3) detectedCorrectIdx = 0;
+                    }
+
+                    let optA = "A. " + rawOpts[0];
+                    let optB = "B. " + rawOpts[1];
+                    let optC = "C. " + rawOpts[2];
+                    let optD = "D. " + rawOpts[3];
 
                     let expText = match[7] ? match[7].trim() : "";
 
-                    if (qText && match[2] && match[3]) {
+                    if (qText && rawOpts[0] && rawOpts[1]) {
                         questions.push({
                             id: questions.length + 1,
                             questionText: qText,
                             options: [optA, optB, optC, optD],
-                            correctAnswer: correctIdx,
+                            correctAnswer: detectedCorrectIdx,
                             explanation: expText
                         });
                     }
                 }
             });
-
-            if (questions.length === 0) {
-                let fallbackMatches = rawText.matchAll(/(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?)\s*(.*?)\s*A[\.\)\:]\s*(.*?)\s*B[\.\)\:]\s*(.*?)\s*C[\.\)\:]\s*(.*?)\s*D[\.\)\:]\s*(.*?)\s*A\s*[:\.]\s*([A-D])\s*(?:E\s*[:\.]\s*(.*?))?(?=(?:Q\s*[:\.]|Câu\s*\d+[\.:]|$))/gi);
-                for (let m of fallbackMatches) {
-                    let ansChar = m[6].toUpperCase();
-                    questions.push({
-                        id: questions.length + 1,
-                        questionText: m[1].trim(),
-                        options: ["A. " + m[2].trim(), "B. " + m[3].trim(), "C. " + m[4].trim(), "D. " + m[5].trim()],
-                        correctAnswer: ansChar.charCodeAt(0) - 65,
-                        explanation: m[7] ? m[7].trim() : ""
-                    });
-                }
-            }
 
             return questions;
         }
