@@ -538,6 +538,7 @@
             }
         }
 
+        // TỐI ƯU ĐỒNG BỘ REALTIME TỨC THÌ
         function startAppDataRealtimeSync() {
             let localData = localStorage.getItem("vmu_local_exam_backup");
             if (localData) {
@@ -557,7 +558,7 @@
                         if (docSnap.exists()) {
                             let cloudData = docSnap.data();
                             let cloudStr = JSON.stringify(cloudData);
-                            let currentLocalStr = localStorage.getItem("vmu_local_exam_backup");
+                            let currentLocalStr = JSON.stringify(appData);
 
                             if (cloudStr !== currentLocalStr) {
                                 appData = cloudData;
@@ -565,22 +566,21 @@
                                 renderHome();
                             }
                         } else {
-                            initDefaultData();
+                            appData = { subjects: [] };
+                            localStorage.setItem("vmu_local_exam_backup", JSON.stringify(appData));
+                            renderHome();
                         }
                     }, (err) => {
                         console.error("Lỗi đồng bộ Realtime:", err);
                     });
                 }
             } catch (e) {
-                initDefaultData();
+                appData = { subjects: [] };
+                renderHome();
             }
         }
 
-        function initDefaultData() {
-            appData = { subjects: [] };
-            renderHome();
-        }
-
+        // TẮT HOÃN DEBOUNCE - ĐẨY DỮ LIỆU THẲNG LÊN CLOUD NGAY TỨC THÌ
         function saveAppDataToCloud() {
             if (!currentUser || currentUser.role !== 'admin') return;
             let jsonStr = JSON.stringify(appData);
@@ -596,7 +596,7 @@
                 } catch (e) {
                     console.error("Lỗi đẩy dữ liệu Cloud:", e);
                 }
-            }, 200);
+            }, 0); // Tải tức thì không chờ trễ
         }
 
         async function loadUserPersonalData() {
@@ -1006,7 +1006,6 @@
                     let posD = dMatch.index + dMatch[0].indexOf(dMatch[1]);
 
                     if (posA < posB && posB < posC && posC < posD) {
-                        // Tẩy sạch các chữ dư như Q:, Q., Câu 1:, Question 1:... ở đầu câu hỏi
                         let qText = block.substring(0, posA)
                             .replace(/^(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:])\s*/i, '')
                             .replace(/^(?:Q|Câu|Question)\b[\s\:\.]*/i, '')
@@ -1026,7 +1025,6 @@
                                 detectedCorrectIdx = idx;
                             }
 
-                            // Tẩy sạch dấu *, khoảng trắng thừa và các tiền tố lặp dạng A:, A., A), [A], (A)
                             let cleaned = optStr
                                 .replace(/\*/g, '')
                                 .replace(/^[\s\u00A0\t\r\n]+/g, '')
