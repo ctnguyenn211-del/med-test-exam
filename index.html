@@ -320,7 +320,7 @@
         let activeQuestions = [];
         let collapsedSubjects = {};
         let collapsedChapters = {};
-        let renameTarget = null; // Dùng cho modal đổi tên
+        let renameTarget = null;
 
         const ADMIN_PASSWORD = "212696";
 
@@ -406,7 +406,7 @@
             } catch(e) {}
 
             errEl.innerText = "Sai tên đăng nhập, mật khẩu hoặc chưa được duyệt!";
-            errEl.classList.add('hidden');
+            errEl.classList.remove('hidden');
         }
 
         async function handleRegister() {
@@ -440,7 +440,7 @@
                     alert('Đăng ký thành công! Vui lòng chờ Admin phê duyệt.');
                 }
             } catch(e) {
-                alert('Lỗi kết nối Cloud!');
+                alert('Lỗi kết nối Cloud! (Hãy nhớ cấu hình lại Rules trong Firebase Console thành allow read, write: if true;)');
             }
         }
 
@@ -507,24 +507,32 @@
             }
         }
 
+        // HÀM TẢI ĐỀ SIÊU TỐC TỪ LOCALSTORAGE VÀ ĐỒNG BỘ NGẦM TRÊN MÂY
         async function loadAppData() {
+            let localData = localStorage.getItem("vmu_local_exam_backup");
+            if (localData) {
+                try { 
+                    appData = JSON.parse(localData); 
+                    renderHome(); // Hiển thị ngay lập tức 0 giây chờ đợi
+                } catch(err) {}
+            }
+
             try {
                 if (window.firebaseDB) {
                     const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
                     const docSnap = await window.firebaseGetDoc(docRef);
                     if (docSnap.exists()) {
-                        appData = docSnap.data();
-                        localStorage.setItem("vmu_local_exam_backup", JSON.stringify(appData));
-                        renderHome();
+                        let cloudData = docSnap.data();
+                        let cloudStr = JSON.stringify(cloudData);
+                        if (cloudStr !== localData) {
+                            appData = cloudData;
+                            localStorage.setItem("vmu_local_exam_backup", cloudStr);
+                            renderHome();
+                        }
                         return;
                     }
                 }
             } catch (e) {}
-
-            let localData = localStorage.getItem("vmu_local_exam_backup");
-            if (localData) {
-                try { appData = JSON.parse(localData); } catch(err) {}
-            }
 
             if (!appData.subjects || appData.subjects.length === 0) {
                 appData = {
@@ -552,7 +560,8 @@
 
         async function saveAppDataToCloud() {
             if (!currentUser || currentUser.role !== 'admin') return;
-            localStorage.setItem("vmu_local_exam_backup", JSON.stringify(appData));
+            let jsonStr = JSON.stringify(appData);
+            localStorage.setItem("vmu_local_exam_backup", jsonStr);
             try {
                 if (window.firebaseDB) {
                     const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
@@ -637,7 +646,6 @@
             let isAdmin = currentUser && currentUser.role === 'admin';
             let html = '';
             appData.subjects.forEach((subj, sIdx) => {
-                // TỰ ĐỘNG SẮP XẾP CHƯƠNG TỪ THẤP ĐẾN CAO
                 if (subj.chapters && subj.chapters.length > 0) {
                     subj.chapters.sort((a, b) => extractNumber(a.chapterName) - extractNumber(b.chapterName));
                 }
@@ -661,7 +669,6 @@
                     html += `<p class="text-sm text-slate-400 italic">Chưa có chương học nào.</p>`;
                 } else {
                     subj.chapters.forEach((chap, cIdx) => {
-                        // TỰ ĐỘNG SẮP XẾP BÀI HỌC TRONG CHƯƠNG TỪ THẤP ĐẾN CAO
                         if (chap.exams && chap.exams.length > 0) {
                             chap.exams.sort((a, b) => extractNumber(a.title) - extractNumber(b.title));
                         }
@@ -715,7 +722,6 @@
             container.innerHTML = html;
         }
 
-        // TÍNH NĂNG SỬA TÊN CHƯƠNG / TÊN BÀI
         function openRenameModal(type, sIdx, cIdx, eIdx) {
             renameTarget = { type, sIdx, cIdx, eIdx };
             let titleEl = document.getElementById('rename-modal-title');
@@ -753,7 +759,6 @@
             renderHome();
         }
 
-        // XÓA CHƯƠNG
         async function deleteChapter(sIdx, cIdx) {
             if (confirm('Xóa chương này cùng toàn bộ đề thi bên trong?')) {
                 appData.subjects[sIdx].chapters.splice(cIdx, 1);
