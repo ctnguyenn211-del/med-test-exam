@@ -564,7 +564,7 @@
                                 localStorage.setItem("vmu_local_exam_backup", cloudStr);
                                 renderHome();
                             }
-                        } else if (!appData.subjects || appData.subjects.length === 0) {
+                        } else {
                             initDefaultData();
                         }
                     }, (err) => {
@@ -572,30 +572,12 @@
                     });
                 }
             } catch (e) {
-                if (!appData.subjects || appData.subjects.length === 0) initDefaultData();
+                initDefaultData();
             }
         }
 
         function initDefaultData() {
-            appData = {
-                subjects: [{
-                    name: "Giải phẫu học",
-                    chapters: [{
-                        chapterName: "Chương 1: Chi trên",
-                        exams: [{
-                            id: "ex_1",
-                            title: "Bài 1: Xương khớp chi trên",
-                            questions: [{
-                                id: 1,
-                                questionText: "Xương nào sau đây thuộc cẳng tay?",
-                                options: ["A. Xương cánh tay", "B. Xương quay", "C. Xương đùi", "D. Xương chày"],
-                                correctAnswer: 1,
-                                explanation: "Cẳng tay gồm hai xương là xương quay và xương trụ."
-                            }]
-                        }]
-                    }]
-                }]
-            };
+            appData = { subjects: [] };
             renderHome();
         }
 
@@ -684,7 +666,7 @@
         function renderHome() {
             const container = document.getElementById('subjects-container');
             if (!appData.subjects || appData.subjects.length === 0) {
-                container.innerHTML = `<div class="bg-white p-8 rounded-2xl text-center text-slate-400">Chưa có môn học nào.</div>`;
+                container.innerHTML = `<div class="bg-white p-8 rounded-2xl text-center text-slate-400">Chưa có môn học nào. Hãy bấm "Thêm Môn Học" hoặc "Tạo Đề / Tải Folder Word" để bắt đầu.</div>`;
                 return;
             }
 
@@ -853,7 +835,7 @@
             
             document.getElementById('modal-input-folder').value = '';
             document.getElementById('modal-input-docs').value = '';
-            document.getElementById('modal-[#modal-input-new-chapter]') ? document.getElementById('modal-input-new-chapter').value = '' : null;
+            document.getElementById('modal-input-new-chapter') ? document.getElementById('modal-input-new-chapter').value = '' : null;
             
             updateChapterDropdown();
             document.getElementById('modal-exam').classList.remove('hidden');
@@ -983,7 +965,7 @@
             alert(`Thành công! Đã nhập ${processedCount} bài học mới.`);
         }
 
-        // BỘ BÓC TÁCH CÂU HỎI THÔNG MINH - DIỆT SẠCH LẶP CHỮ A. A., B. B. & ĐỌC DẤU * CHÍNH XÁC
+        // BỘ BÓC TÁCH CÂU HỎI THÔNG MINH - DIỆT SẠCH MỌI TIỀN TỐ DƯ THỪA (Q:, A:, E:, CÂU..., ANS...)
         function parseBulkQuestions(text) {
             if (!text) return [];
 
@@ -995,15 +977,15 @@
                 block = block.trim();
                 if (!block) return;
 
-                // 1. Tách giải thích
+                // 1. Tách và làm sạch giải thích (E:, Exp:, Explanation:, Giải thích:)
                 let explanation = "";
-                let expMatch = block.match(/(?:Giải\s*thích|Explanation|Exp)[\.\:\s]+([\s\S]*)$/i);
+                let expMatch = block.match(/(?:Giải\s*thích|Explanation|Exp|E)[\.\:\s]+([\s\S]*)$/i);
                 if (expMatch) {
-                    explanation = expMatch[1].trim();
+                    explanation = expMatch[1].replace(/^(?:Giải\s*thích|Explanation|Exp|E)[\.\:\s]*/i, '').trim();
                     block = block.substring(0, expMatch.index).trim();
                 }
 
-                // 2. Tách đáp án đúng dạng "Đáp án: A" ở cuối khối
+                // 2. Tách đáp án đúng dạng "Đáp án: A", "Key: A", "Ans: A"
                 let explicitKeyIdx = -1;
                 let keyMatch = block.match(/(?:Đáp\s*án|Answer|Key|Ans|ĐA)[\.\:\s]*([A-D])/i);
                 if (keyMatch) {
@@ -1011,7 +993,7 @@
                     block = block.substring(0, keyMatch.index).trim();
                 }
 
-                // 3. Định vị vị trí A, B, C, D
+                // 3. Định vị vị trí A, B, C, D (hoặc A:, B:, C:, D:)
                 let aMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?A[\.\)\:\-\]\s]+)/i);
                 let bMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?B[\.\)\:\-\]\s]+)/i);
                 let cMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?C[\.\)\:\-\]\s]+)/i);
@@ -1024,8 +1006,10 @@
                     let posD = dMatch.index + dMatch[0].indexOf(dMatch[1]);
 
                     if (posA < posB && posB < posC && posC < posD) {
+                        // Tẩy sạch các chữ dư như Q:, Q., Câu 1:, Question 1:... ở đầu câu hỏi
                         let qText = block.substring(0, posA)
                             .replace(/^(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:])\s*/i, '')
+                            .replace(/^(?:Q|Câu|Question)\b[\s\:\.]*/i, '')
                             .trim();
 
                         let rawA = block.substring(posA, posB);
@@ -1042,7 +1026,7 @@
                                 detectedCorrectIdx = idx;
                             }
 
-                            // Xóa triệt để mọi dấu * và các ký tự A., B., C., D., A) lặp ở đầu chuỗi
+                            // Tẩy sạch dấu *, khoảng trắng thừa và các tiền tố lặp dạng A:, A., A), [A], (A)
                             let cleaned = optStr
                                 .replace(/\*/g, '')
                                 .replace(/^[\s\u00A0\t\r\n]+/g, '')
@@ -1274,7 +1258,7 @@
                 document.getElementById('btn-review-mistakes').classList.add('hidden');
                 return;
             }
-            document.getElementById('btn-review-mistakes').classList.remove('hidden');
+            document.getElementById('btn-review-[#btn-review-mistakes]').classList.remove('hidden');
             let html = '';
             mistakes.forEach((m, idx) => {
                 html += `<div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3"><div class="flex justify-between items-start"><span class="bg-[#FFF5F8] text-[#D6336C] font-semibold px-3 py-1 rounded-lg text-xs border border-[#FFB6C1]">Câu sai #${idx + 1}</span><button onclick="removeMistake(${idx})" class="text-slate-400 hover:text-[#D6336C] text-xs">Đã thuộc (Xóa)</button></div><h4 class="font-bold text-slate-900 text-sm">${m.questionText}</h4><div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">`;
