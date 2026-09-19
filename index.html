@@ -263,7 +263,7 @@
         </div>
     </div>
 
-    <!-- Script xử lý logic -->
+    <!-- Script xử lý logic kết hợp Offline Storage (LocalStorage Fallback) -->
     <script>
         let appData = { subjects: [], mistakes: [], habits: {} };
         let currentExam = null;
@@ -311,49 +311,76 @@
             }
         }
 
+        // Tải dữ liệu ưu tiên từ Cloud, nếu lỗi mạng/offline sẽ tự động lấy từ bộ nhớ máy (LocalStorage)
         async function loadDataFromCloud() {
             try {
-                if (!window.firebaseDB) return;
-                const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
-                const docSnap = await window.firebaseGetDoc(docRef);
-                if (docSnap.exists()) {
-                    appData = docSnap.data();
-                } else {
-                    appData = {
-                        subjects: [{
-                            name: "Sinh lý học",
-                            chapters: [{
-                                chapterName: "Chương 1: Máu",
-                                exams: [{
-                                    id: "ex_1",
-                                    title: "Bài 1: Khối lượng máu",
-                                    questions: [{
-                                        id: 1,
-                                        questionText: "Khối lượng máu toàn phần chiếm bao nhiêu phần trăm trọng lượng cơ thể?",
-                                        options: ["A. 4 - 5%", "B. 6 - 8%", "C. 10 - 12%", "D. 15 - 20%"],
-                                        correctAnswer: 1,
-                                        explanation: "Khoảng 6 - 8% trọng lượng cơ thể."
-                                    }]
+                if (window.firebaseDB) {
+                    const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
+                    const docSnap = await window.firebaseGetDoc(docRef);
+                    if (docSnap.exists()) {
+                        appData = docSnap.data();
+                        // Lưu đồng thời vào localStorage để phòng hờ mất mạng
+                        localStorage.setItem("vmu_local_backup", JSON.stringify(appData));
+                        renderHome();
+                        updateMistakeBadge();
+                        renderHabitTracker();
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.warn("Không thể kết nối Cloud Firestore, chuyển sang dùng bộ nhớ cục bộ:", e);
+            }
+
+            // Fallback: Lấy từ LocalStorage nếu Cloud lỗi hoặc chưa có
+            let localData = localStorage.getItem("vmu_local_backup");
+            if (localData) {
+                try {
+                    appData = JSON.parse(localData);
+                } catch(err) {}
+            }
+
+            // Nếu cả Cloud và Local đều trống, khởi tạo dữ liệu mẫu
+            if (!appData.subjects || appData.subjects.length === 0) {
+                appData = {
+                    subjects: [{
+                        name: "Sinh lý học",
+                        chapters: [{
+                            chapterName: "Chương 1: Máu",
+                            exams: [{
+                                id: "ex_1",
+                                title: "Bài 1: Khối lượng máu",
+                                questions: [{
+                                    id: 1,
+                                    questionText: "Khối lượng máu toàn phần chiếm bao nhiêu phần trăm trọng lượng cơ thể?",
+                                    options: ["A. 4 - 5%", "B. 6 - 8%", "C. 10 - 12%", "D. 15 - 20%"],
+                                    correctAnswer: 1,
+                                    explanation: "Khoảng 6 - 8% trọng lượng cơ thể."
                                 }]
                             }]
-                        }],
-                        mistakes: [],
-                        habits: {}
-                    };
-                    await saveDataToCloud();
-                }
-                renderHome();
-                updateMistakeBadge();
-                renderHabitTracker();
-            } catch (e) { console.error(e); }
+                        }]
+                    }],
+                    mistakes: [],
+                    habits: {}
+                };
+            }
+
+            renderHome();
+            updateMistakeBadge();
+            renderHabitTracker();
         }
 
         async function saveDataToCloud() {
+            // Luôn lưu vào máy trước để đảm bảo an toàn tuyệt đối
+            localStorage.setItem("vmu_local_backup", JSON.stringify(appData));
+
             try {
-                if (!window.firebaseDB) return;
-                const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
-                await window.firebaseSetDoc(docRef, appData);
-            } catch (e) { console.error(e); }
+                if (window.firebaseDB) {
+                    const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
+                    await window.firebaseSetDoc(docRef, appData);
+                }
+            } catch (e) {
+                console.warn("Lưu lên Cloud thất bại (đang chạy offline), dữ liệu đã được lưu an toàn trên trình duyệt.", e);
+            }
             updateMistakeBadge();
         }
 
@@ -429,8 +456,8 @@
                                     </div>
                                     ${isAdmin ? `
                                     <div class="flex items-center space-x-1">
-                                        <button onclick="moveChapter(${sIdx},${cIdx}, -1)" class="text-slate-400 hover:text-slate-700 px-1 text-xs" title="Chuyển lên (Đưa lên vị trí cao hơn)"><i class="fa-solid fa-arrow-up"></i></button>
-                                        <button onclick="moveChapter(${sIdx},${cIdx}, 1)" class="text-slate-400 hover:text-slate-700 px-1 text-xs" title="Chuyển xuống (Đưa xuống vị trí thấp hơn)"><i class="fa-solid fa-arrow-down"></i></button>
+                                        <button onclick="moveChapter(${sIdx},${cIdx}, -1)" class="text-slate-400 hover:text-slate-700 px-1 text-xs" title="Chuyển lên"><i class="fa-solid fa-arrow-up"></i></button>
+                                        <button onclick="moveChapter(${sIdx},${cIdx}, 1)" class="text-slate-400 hover:text-slate-700 px-1 text-xs" title="Chuyển xuống"><i class="fa-solid fa-arrow-down"></i></button>
                                     </div>` : ''}
                                 </div>
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pl-4 pt-2 ${isChapCollapsed ? 'hidden' : ''}">
@@ -475,7 +502,6 @@
             renderHome();
         }
 
-        // Sắp xếp chương: Đã đảo chiều để từ thấp (trên) đến cao (dưới) chuẩn xác
         async function moveChapter(sIdx, cIdx, direction) {
             let chapters = appData.subjects[sIdx].chapters;
             let targetIdx = cIdx + direction;
@@ -561,10 +587,9 @@
             await saveDataToCloud();
             closeCreateExamModal();
             renderHome();
-            alert('Tạo đề thi thành công và đã đồng bộ lên Cloud!');
+            alert('Tạo đề thi thành công!');
         }
 
-        // Bộ phân tích câu hỏi + Tự động lọc/xóa bỏ các đáp án bị trùng lặp
         function parseBulkQuestions(text) {
             let questions = [];
             let rawBlocks = text.split(/(?=Câu\s+\d+[\.:]|Q\s*:\s*Câu)/i);
@@ -599,7 +624,6 @@
                     }
                 }
 
-                // Xóa bỏ đáp án bị trùng lặp
                 let uniqueMap = new Map();
                 let options = [];
                 let correctOptText = rawOptions[correctAnswer];
@@ -752,7 +776,6 @@
             alert('Đã cập nhật câu hỏi thành công!');
         }
 
-        // Hiện đáp án ngay lập tức khi click chọn
         async function selectAnswer(optIdx) {
             if (userAnswers[currentQuestionIndex] !== undefined) return;
             userAnswers[currentQuestionIndex] = optIdx;
