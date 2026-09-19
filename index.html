@@ -157,7 +157,7 @@
         <!-- TAB 3: ÔN TẬP CÂU SAI -->
         <div id="tab-mistakes" class="hidden space-y-6">
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center">
-                <div><h2 class="text-2xl font-bold text-slate-900">Sổ Tay Ôน Tập Câu Sai</h2><p class="text-sm text-slate-500">Tổng hợp các câu trả lời sai của riêng bạn.</p></div>
+                <div><h2 class="text-2xl font-bold text-slate-900">Sổ Tay Ôn Tập Câu Sai</h2><p class="text-sm text-slate-500">Tổng hợp các câu trả lời sai của riêng bạn.</p></div>
                 <button onclick="startMistakeReview()" id="btn-review-mistakes" class="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-xl font-medium text-sm transition shadow-sm flex items-center"><i class="fa-solid fa-rotate-right mr-2"></i> Luyện tập lại câu sai</button>
             </div>
             <div id="mistakes-container" class="space-y-4"></div>
@@ -304,7 +304,7 @@
     <!-- Script xử lý logic -->
     <script>
         let appData = { subjects: [] };
-        let userPersonalData = { mistakes: [], habits: {} }; // Dữ liệu cá nhân riêng của từng user
+        let userPersonalData = { mistakes: [], habits: {} };
         let currentUser = null;
         let currentExam = null;
         let currentExamRef = { sIdx: null, cIdx: null, eIdx: null };
@@ -509,11 +509,17 @@
                     const docSnap = await window.firebaseGetDoc(docRef);
                     if (docSnap.exists()) {
                         appData = docSnap.data();
+                        localStorage.setItem("vmu_local_exam_backup", JSON.stringify(appData));
                         renderHome();
                         return;
                     }
                 }
             } catch (e) {}
+
+            let localData = localStorage.getItem("vmu_local_exam_backup");
+            if (localData) {
+                try { appData = JSON.parse(localData); } catch(err) {}
+            }
 
             if (!appData.subjects || appData.subjects.length === 0) {
                 appData = {
@@ -541,6 +547,7 @@
 
         async function saveAppDataToCloud() {
             if (!currentUser || currentUser.role !== 'admin') return;
+            localStorage.setItem("vmu_local_exam_backup", JSON.stringify(appData));
             try {
                 if (window.firebaseDB) {
                     const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
@@ -582,9 +589,7 @@
             updateMistakeBadge();
         }
 
-        window.onload = function() {
-            // Khởi tạo thông qua initAppSession()
-        };
+        window.onload = function() {};
 
         function switchTab(tabId) {
             document.getElementById('tab-home').classList.add('hidden');
