@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VMU TestExam Pro - Realtime Tryhard Học Bổng</title>
-    <!-- Tailwind CSS v4 CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>VMU TestExam Pro - Hệ thống tryhard giật HỌC BỔNG của npct</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Mammoth.js để đọc file Word (.docx) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
-
+    <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { 
@@ -30,7 +30,6 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // Expose Firebase globals for the application logic
         window.firebaseDB = db;
         window.firebaseDoc = doc;
         window.firebaseSetDoc = setDoc;
@@ -41,6 +40,7 @@
         window.firebaseUpdateDoc = updateDoc;
         window.firebaseOnSnapshot = onSnapshot;
 
+        // Khởi chạy ứng dụng khi Firebase đã sẵn sàng
         window.addEventListener('DOMContentLoaded', () => {
             if (typeof window.initAppSession === 'function') {
                 window.initAppSession();
@@ -50,34 +50,28 @@
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
 
-    <!-- Header / Navbar -->
+    <!-- Navbar -->
     <header class="bg-red-700 text-white shadow-md sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-2">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
             <div class="flex items-center space-x-3 cursor-pointer" onclick="switchTab('home')">
                 <div class="bg-white text-red-700 p-2 rounded-xl font-bold text-xl shadow">
                     <i class="fa-solid fa-stethoscope"></i>
                 </div>
                 <div>
-                    <div class="flex items-center space-x-2">
-                        <h1 class="font-bold text-lg leading-tight">VMU TestExam Pro</h1>
-                        <span class="bg-emerald-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center shadow-xs">
-                            <span class="w-1.5 h-1.5 bg-white rounded-full animate-ping mr-1"></span> Realtime Sync
-                        </span>
-                    </div>
-                    <p class="text-xs text-red-200">Hệ thống tryhard giật HỌC BỔNG siêu tốc</p>
+                    <h1 class="font-bold text-lg leading-tight">VMU TestExam Pro</h1>
+                    <p class="text-xs text-red-200">Hệ thống tryhard giật HỌC BỔNG của npct</p>
                 </div>
             </div>
-
-            <nav class="flex flex-wrap items-center space-x-2 md:space-x-3">
+            <nav class="flex items-center space-x-2 md:space-x-4">
                 <button onclick="switchTab('home')" id="nav-home" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-red-800 transition"><i class="fa-solid fa-house mr-1"></i> Trang chủ</button>
                 <button onclick="switchTab('mistakes')" id="nav-mistakes" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-red-800 transition relative"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Ôn câu sai <span id="badge-mistakes" class="absolute -top-1 -right-1 bg-amber-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold hidden">0</span></button>
                 <button onclick="switchTab('habit')" id="nav-habit" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-red-800 transition"><i class="fa-solid fa-calendar-check mr-1"></i> Habit Tracker</button>
                 
-                <button onclick="openUsersModal()" id="nav-users-btn" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-amber-600 hover:bg-amber-700 transition hidden flex items-center shadow-sm">
-                    <i class="fa-solid fa-users-gear mr-1"></i> Duyệt Users <span id="badge-pending-users" class="ml-1 bg-white text-amber-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold hidden">0</span>
+                <button onclick="openUsersModal()" id="nav-users-btn" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-amber-600 hover:bg-amber-700 transition hidden flex items-center">
+                    <i class="fa-solid fa-users-gear mr-1"></i> Duyệt Users
                 </button>
 
-                <div class="flex items-center space-x-2 bg-red-900/60 px-3 py-1.5 rounded-xl border border-red-500/40 text-sm">
+                <div class="flex items-center space-x-2 bg-red-900/50 px-3 py-1.5 rounded-xl border border-red-600/40 text-sm">
                     <i class="fa-solid fa-user-shield text-amber-300" id="user-role-icon"></i>
                     <span id="nav-username" class="font-medium">Khách</span>
                     <button onclick="logoutAccount()" class="text-red-200 hover:text-white ml-2 text-xs underline">Đăng xuất</button>
@@ -104,10 +98,8 @@
         <div id="tab-home" class="space-y-6">
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                 <div>
-                    <h2 class="text-2xl font-bold text-slate-900 flex items-center">
-                        Danh Sách Môn Học & Đề Thi
-                    </h2>
-                    <p class="text-sm text-slate-500">Dữ liệu được đồng bộ thời gian thực tự động sang tất cả tài khoản.</p>
+                    <h2 class="text-2xl font-bold text-slate-900">Danh Sách Môn Học & Đề Thi</h2>
+                    <p class="text-sm text-slate-500">Lựa chọn bài học để bắt đầu luyện đề y khoa.</p>
                 </div>
                 <div id="admin-action-buttons" class="flex flex-wrap gap-2 hidden">
                     <button onclick="openSubjectModal()" class="bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-xl text-sm font-medium transition shadow-sm flex items-center">
@@ -213,12 +205,6 @@
                     <input type="password" id="auth-password" placeholder="Nhập mật khẩu..." class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:border-red-600">
                 </div>
                 <div id="auth-error-msg" class="text-rose-600 text-xs text-center font-medium hidden"></div>
-                
-                <!-- Realtime approval loading indicator for pending users -->
-                <div id="auth-pending-alert" class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs text-center hidden space-y-1">
-                    <div class="font-bold flex items-center justify-center"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Tài khoản đang chờ Admin phê duyệt...</div>
-                    <p class="text-[11px] text-amber-700">Khi Admin ấn Duyệt, hệ thống sẽ tự động đăng nhập trong 0.5s!</p>
-                </div>
             </div>
 
             <div class="space-y-3">
@@ -228,11 +214,11 @@
         </div>
     </div>
 
-    <!-- MODAL: QUẢN LÝ USERS (REALTIME) -->
+    <!-- MODAL: QUẢN LÝ USERS -->
     <div id="modal-users" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
             <div class="flex justify-between items-center border-b pb-3">
-                <h3 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-users-gear text-red-600 mr-2"></i> Phê Duyệt Thành Viên (Realtime)</h3>
+                <h3 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-users-gear text-red-600 mr-2"></i> Phê Duyệt Thành Viên</h3>
                 <button onclick="closeUsersModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
             <div id="users-list-container" class="space-y-3"></div>
@@ -345,6 +331,7 @@
         </div>
     </div>
 
+    <!-- Script xử lý logic ứng dụng -->
     <script>
         let appData = { subjects: [] };
         let userPersonalData = { mistakes: [], habits: {} };
@@ -359,12 +346,7 @@
         let collapsedSubjects = {};
         let collapsedChapters = {};
         let renameTarget = null;
-
-        // Active Firestore Unsubscribe functions
-        let appDataUnsub = null;
-        let pendingApprovalUnsub = null;
-        let usersListUnsub = null;
-        let userPersonalUnsub = null;
+        let syncTimeout = null;
 
         const ADMIN_PASSWORD = "212696";
 
@@ -376,13 +358,11 @@
 
             if (!currentUser) {
                 document.getElementById('modal-auth').classList.remove('hidden');
-                // Even logged out, we can establish realtime app data listener for initial render preview
-                startAppDataRealtimeSync();
             } else {
                 document.getElementById('modal-auth').classList.add('hidden');
                 updateNavbarUser();
-                startAppDataRealtimeSync();
-                startUserPersonalDataSync();
+                await loadAppData();
+                await loadUserPersonalData();
             }
         };
 
@@ -398,7 +378,6 @@
                 usersBtn.classList.remove('hidden');
                 adminBtns.classList.remove('hidden');
                 adminDataMenu.classList.remove('hidden');
-                startUsersListRealtimeSync();
             } else {
                 icon.className = "fa-solid fa-user text-emerald-300";
                 usersBtn.classList.add('hidden');
@@ -407,74 +386,11 @@
             }
         }
 
-        // REALTIME 1: App Data Listener (<1s delay across ALL clients)
-        function startAppDataRealtimeSync() {
-            if (!window.firebaseDB) return;
-            const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
-
-            if (appDataUnsub) appDataUnsub();
-
-            appDataUnsub = window.firebaseOnSnapshot(docRef, (snapshot) => {
-                if (snapshot.exists()) {
-                    let cloudData = snapshot.data();
-                    appData = cloudData;
-                    localStorage.setItem("vmu_local_exam_backup", JSON.stringify(cloudData));
-                    renderHome();
-                } else {
-                    // Seed initial structure if cloud is empty
-                    if (!appData.subjects || appData.subjects.length === 0) {
-                        appData = {
-                            subjects: [{
-                                name: "Giải phẫu học",
-                                chapters: [{
-                                    chapterName: "Chương 1: Chi trên",
-                                    exams: [{
-                                        id: "ex_1",
-                                        title: "Bài 1: Xương khớp chi trên",
-                                        questions: [{
-                                            id: 1,
-                                            questionText: "Xương nào sau đây thuộc cẳng tay?",
-                                            options: ["A. Xương cánh tay", "B. Xương quay", "C. Xương đùi", "D. Xương chày"],
-                                            correctAnswer: 1,
-                                            explanation: "Cẳng tay gồm hai xương là xương quay và xương trụ."
-                                        }]
-                                    }]
-                                }]
-                            }]
-                        };
-                    }
-                    saveAppDataToCloud();
-                }
-            }, (err) => {
-                console.error("Lỗi Realtime App Data:", err);
-            });
-        }
-
-        // Save data directly to cloud - onSnapshot will broadcast instantly
-        async function saveAppDataToCloud() {
-            let jsonStr = JSON.stringify(appData);
-            localStorage.setItem("vmu_local_exam_backup", jsonStr);
-
-            if (!currentUser || currentUser.role !== 'admin') return;
-
-            try {
-                if (window.firebaseDB) {
-                    const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
-                    await window.firebaseSetDoc(docRef, appData);
-                }
-            } catch (e) {
-                console.error("Lỗi lưu dữ liệu Admin lên Cloud:", e);
-            }
-        }
-
-        // REALTIME 2: Auth & Approval Flow
         async function handleLogin() {
             let user = document.getElementById('auth-username').value.trim();
             let pass = document.getElementById('auth-password').value;
             let errEl = document.getElementById('auth-error-msg');
-            let pendingAlert = document.getElementById('auth-pending-alert');
             errEl.classList.add('hidden');
-            pendingAlert.classList.add('hidden');
 
             if (!user || !pass) {
                 errEl.innerText = "Vui lòng nhập đầy đủ tên và mật khẩu!";
@@ -482,79 +398,51 @@
                 return;
             }
 
-            // Check if Admin
             if (user.toLowerCase() === 'admin' || pass === ADMIN_PASSWORD) {
                 if (pass === ADMIN_PASSWORD) {
                     currentUser = { username: user, role: 'admin', status: 'approved' };
                     localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
                     document.getElementById('modal-auth').classList.add('hidden');
                     updateNavbarUser();
-                    startAppDataRealtimeSync();
-                    startUserPersonalDataSync();
+                    await loadAppData();
+                    await loadUserPersonalData();
                     return;
                 }
             }
 
-            // Realtime user account lookup & approval listener
             try {
                 if (window.firebaseDB) {
                     let docRef = window.firebaseDoc(window.firebaseDB, "users_list", user);
                     let snap = await window.firebaseGetDoc(docRef);
-                    
                     if (snap.exists()) {
                         let data = snap.data();
                         if (data.password === pass) {
-                            if (data.status === 'approved') {
-                                currentUser = { username: user, role: 'member', status: 'approved' };
-                                localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
-                                document.getElementById('modal-auth').classList.add('hidden');
-                                updateNavbarUser();
-                                startAppDataRealtimeSync();
-                                startUserPersonalDataSync();
-                                return;
-                            } else {
-                                // User is pending -> Subscribe in real-time to listen for approval!
-                                pendingAlert.classList.remove('hidden');
-                                listenForRealtimeApproval(user);
+                            if (data.status !== 'approved') {
+                                errEl.innerText = "Tài khoản của bạn đang chờ Admin phê duyệt!";
+                                errEl.classList.remove('hidden');
                                 return;
                             }
+                            currentUser = { username: user, role: 'member', status: 'approved' };
+                            localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
+                            document.getElementById('modal-auth').classList.add('hidden');
+                            updateNavbarUser();
+                            await loadAppData();
+                            await loadUserPersonalData();
+                            return;
                         }
                     }
                 }
             } catch(e) {}
 
-            errEl.innerText = "Sai tên đăng nhập hoặc mật khẩu!";
+            errEl.innerText = "Sai tên đăng nhập, mật khẩu hoặc chưa được duyệt!";
             errEl.classList.remove('hidden');
-        }
-
-        // Instantly log in user the split-second Admin approves
-        function listenForRealtimeApproval(username) {
-            if (!window.firebaseDB) return;
-            if (pendingApprovalUnsub) pendingApprovalUnsub();
-
-            const docRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
-            pendingApprovalUnsub = window.firebaseOnSnapshot(docRef, (snap) => {
-                if (snap.exists() && snap.data().status === 'approved') {
-                    if (pendingApprovalUnsub) pendingApprovalUnsub();
-                    
-                    currentUser = { username: username, role: 'member', status: 'approved' };
-                    localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
-                    document.getElementById('auth-pending-alert').classList.add('hidden');
-                    document.getElementById('modal-auth').classList.add('hidden');
-                    updateNavbarUser();
-                    startAppDataRealtimeSync();
-                    startUserPersonalDataSync();
-                }
-            });
         }
 
         async function handleRegister() {
             let user = document.getElementById('auth-username').value.trim();
             let pass = document.getElementById('auth-password').value;
             let errEl = document.getElementById('auth-error-msg');
-            let pendingAlert = document.getElementById('auth-pending-alert');
             errEl.classList.add('hidden');
-            pendingAlert.classList.add('hidden');
 
             if (!user || !pass) {
                 errEl.innerText = "Vui lòng nhập đầy đủ tên và mật khẩu!";
@@ -578,8 +466,7 @@
                         return;
                     }
                     await window.firebaseSetDoc(docRef, { username: user, password: pass, status: 'pending', role: 'member' });
-                    pendingAlert.classList.remove('hidden');
-                    listenForRealtimeApproval(user);
+                    alert('Đăng ký thành công! Vui lòng chờ Admin phê duyệt.');
                 }
             } catch(e) {
                 alert('Lỗi kết nối Cloud!');
@@ -589,114 +476,168 @@
         function logoutAccount() {
             localStorage.removeItem("vmu_current_user");
             currentUser = null;
-            if (pendingApprovalUnsub) pendingApprovalUnsub();
-            if (usersListUnsub) usersListUnsub();
-            if (userPersonalUnsub) userPersonalUnsub();
-
             document.getElementById('auth-username').value = '';
             document.getElementById('auth-password').value = '';
-            document.getElementById('auth-pending-alert').classList.add('hidden');
             document.getElementById('modal-auth').classList.remove('hidden');
         }
 
-        // REALTIME 3: Admin Users Approval List Listener
-        function startUsersListRealtimeSync() {
-            if (!window.firebaseDB || !currentUser || currentUser.role !== 'admin') return;
-            const colRef = window.firebaseCollection(window.firebaseDB, "users_list");
+        async function openUsersModal() {
+            if (!currentUser || currentUser.role !== 'admin') return;
+            const container = document.getElementById('users-list-container');
+            container.innerHTML = `<p class="text-sm text-slate-400 text-center py-4">Đang tải...</p>`;
+            document.getElementById('modal-users').classList.remove('hidden');
 
-            if (usersListUnsub) usersListUnsub();
-
-            usersListUnsub = window.firebaseOnSnapshot(colRef, (querySnap) => {
-                let pendingCount = 0;
-                let html = '';
-
-                querySnap.forEach((docSnap) => {
-                    let u = docSnap.data();
-                    let isPending = u.status === 'pending';
-                    if (isPending) pendingCount++;
-
-                    html += `
-                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 flex justify-between items-center" id="user-row-${u.username}">
-                            <div>
-                                <h4 class="font-bold text-slate-800 flex items-center">${u.username}</h4>
-                                <span class="text-xs px-2 py-0.5 rounded-full font-semibold ${isPending ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}" id="user-status-${u.username}">${isPending ? 'Chờ duyệt' : 'Đã duyệt'}</span>
+            try {
+                if (window.firebaseDB) {
+                    let colRef = window.firebaseCollection(window.firebaseDB, "users_list");
+                    let querySnap = await window.firebaseGetDocs(colRef);
+                    let html = '';
+                    querySnap.forEach((docSnap) => {
+                        let u = docSnap.data();
+                        let isPending = u.status === 'pending';
+                        html += `
+                            <div class="bg-slate-50 p-4 rounded-xl border flex justify-between items-center" id="user-row-${u.username}">
+                                <div>
+                                    <h4 class="font-bold text-slate-800">${u.username}</h4>
+                                    <span class="text-xs px-2 py-0.5 rounded-full font-semibold ${isPending ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}" id="user-status-${u.username}">${isPending ? 'Chờ duyệt' : 'Đã duyệt'}</span>
+                                </div>
+                                <div class="space-x-2">
+                                    ${isPending ? `<button onclick="approveUser('${u.username}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">Phê duyệt</button>` : ''}
+                                    <button onclick="deleteUser('${u.username}')" class="bg-rose-100 hover:bg-rose-200 text-rose-700 px-3 py-1.5 rounded-lg text-xs font-bold transition">Xóa</button>
+                                </div>
                             </div>
-                            <div class="space-x-2">
-                                ${isPending ? `<button onclick="approveUser('${u.username}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs">Phê duyệt</button>` : ''}
-                                <button onclick="deleteUser('${u.username}')" class="bg-rose-100 hover:bg-rose-200 text-rose-700 px-3 py-1.5 rounded-lg text-xs font-bold transition">Xóa</button>
-                            </div>
-                        </div>
-                    `;
-                });
-
-                const badge = document.getElementById('badge-pending-users');
-                if (pendingCount > 0) {
-                    badge.innerText = pendingCount;
-                    badge.classList.remove('hidden');
-                } else {
-                    badge.classList.add('hidden');
-                }
-
-                const container = document.getElementById('users-list-container');
-                if (container) {
+                        `;
+                    });
                     container.innerHTML = html || `<p class="text-sm text-slate-400 text-center py-4">Chưa có thành viên nào.</p>`;
                 }
-            });
-        }
-
-        function openUsersModal() {
-            if (!currentUser || currentUser.role !== 'admin') return;
-            document.getElementById('modal-users').classList.remove('hidden');
-            startUsersListRealtimeSync();
+            } catch(e) {
+                container.innerHTML = `<p class="text-sm text-rose-500 text-center py-4">Lỗi tải danh sách.</p>`;
+            }
         }
 
         function closeUsersModal() { document.getElementById('modal-users').classList.add('hidden'); }
 
         async function approveUser(username) {
+            let statusEl = document.getElementById(`user-status-${username}`);
+            if (statusEl) {
+                statusEl.className = "text-xs px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800";
+                statusEl.innerText = "Đã duyệt";
+            }
+            let btnParent = statusEl ? statusEl.closest('.flex') : null;
+            if (btnParent) {
+                let approveBtn = btnParent.querySelector('button');
+                if (approveBtn) approveBtn.remove();
+            }
+
             try {
                 if (window.firebaseDB) {
                     let docRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
                     await window.firebaseSetDoc(docRef, { status: 'approved' }, { merge: true });
                 }
-            } catch(e) {
-                alert('Lỗi phê duyệt!');
-            }
+            } catch(e) {}
         }
 
         async function deleteUser(username) {
             if (confirm(`Xóa user ${username}?`)) {
+                let rowEl = document.getElementById(`user-row-${username}`);
+                if (rowEl) rowEl.remove();
+
                 try {
                     if (window.firebaseDB) {
                         let docRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
                         await window.firebaseDeleteDoc(docRef);
                     }
-                } catch(e) {
-                    alert('Lỗi xóa user!');
-                }
+                } catch(e) {}
             }
         }
 
-        // REALTIME 4: Personal User Data Sync (Mistakes & Habits)
-        function startUserPersonalDataSync() {
-            if (!currentUser || !window.firebaseDB) return;
-            let userKey = currentUser.username;
-            const docRef = window.firebaseDoc(window.firebaseDB, "users_data", userKey);
+        async function loadAppData() {
+            let localData = localStorage.getItem("vmu_local_exam_backup");
+            if (localData) {
+                try { 
+                    appData = JSON.parse(localData); 
+                    renderHome(); 
+                } catch(err) {}
+            }
 
-            if (userPersonalUnsub) userPersonalUnsub();
-
-            userPersonalUnsub = window.firebaseOnSnapshot(docRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    userPersonalData = docSnap.data();
-                } else {
-                    userPersonalData = { mistakes: [], habits: {} };
+            try {
+                if (window.firebaseDB) {
+                    const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
+                    const docSnap = await window.firebaseGetDoc(docRef);
+                    if (docSnap.exists()) {
+                        let cloudData = docSnap.data();
+                        let cloudStr = JSON.stringify(cloudData);
+                        if (cloudStr !== localData) {
+                            appData = cloudData;
+                            localStorage.setItem("vmu_local_exam_backup", cloudStr);
+                            renderHome();
+                        }
+                        return;
+                    }
                 }
-                updateMistakeBadge();
-                renderHabitTracker();
-            });
+            } catch (e) {}
+
+            if (!appData.subjects || appData.subjects.length === 0) {
+                appData = {
+                    subjects: [{
+                        name: "Giải phẫu học",
+                        chapters: [{
+                            chapterName: "Chương 1: Chi trên",
+                            exams: [{
+                                id: "ex_1",
+                                title: "Bài 1: Xương khớp chi trên",
+                                questions: [{
+                                    id: 1,
+                                    questionText: "Xương nào sau đây thuộc cẳng tay?",
+                                    options: ["A. Xương cánh tay", "B. Xương quay", "C. Xương đùi", "D. Xương chày"],
+                                    correctAnswer: 1,
+                                    explanation: "Cẳng tay gồm hai xương là xương quay và xương trụ."
+                                }]
+                            }]
+                        }]
+                    }]
+                };
+            }
+            renderHome();
+        }
+
+        function saveAppDataToCloud() {
+            if (!currentUser || currentUser.role !== 'admin') return;
+            let jsonStr = JSON.stringify(appData);
+            localStorage.setItem("vmu_local_exam_backup", jsonStr);
+
+            if (syncTimeout) clearTimeout(syncTimeout);
+            syncTimeout = setTimeout(async () => {
+                try {
+                    if (window.firebaseDB) {
+                        const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
+                        await window.firebaseSetDoc(docRef, appData);
+                    }
+                } catch (e) {}
+            }, 800);
+        }
+
+        async function loadUserPersonalData() {
+            let userKey = currentUser.username;
+            try {
+                if (window.firebaseDB) {
+                    const docRef = window.firebaseDoc(window.firebaseDB, "users_data", userKey);
+                    const docSnap = await window.firebaseGetDoc(docRef);
+                    if (docSnap.exists()) {
+                        userPersonalData = docSnap.data();
+                    } else {
+                        userPersonalData = { mistakes: [], habits: {} };
+                    }
+                }
+            } catch(e) {
+                let local = localStorage.getItem("vmu_personal_" + userKey);
+                if (local) userPersonalData = JSON.parse(local);
+            }
+            updateMistakeBadge();
+            renderHabitTracker();
         }
 
         function saveUserPersonalData() {
-            if (!currentUser) return;
             let userKey = currentUser.username;
             localStorage.setItem("vmu_personal_" + userKey, JSON.stringify(userPersonalData));
             try {
@@ -742,8 +683,6 @@
 
         function renderHome() {
             const container = document.getElementById('subjects-container');
-            if (!container) return;
-
             if (!appData.subjects || appData.subjects.length === 0) {
                 container.innerHTML = `<div class="bg-white p-8 rounded-2xl text-center text-slate-400">Chưa có môn học nào.</div>`;
                 return;
@@ -756,7 +695,7 @@
                     subj.chapters.sort((a, b) => extractNumber(a.chapterName) - extractNumber(b.chapterName));
                 }
 
-                let isSubjCollapsed = collapsedSubjects[sIdx] !== undefined ? collapsedSubjects[sIdx] : false;
+                let isSubjCollapsed = collapsedSubjects[sIdx] !== undefined ? collapsedSubjects[sIdx] : true;
                 html += `
                     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
                         <div class="bg-slate-50 px-6 py-4 flex justify-between items-center border-b border-slate-100">
@@ -780,7 +719,7 @@
                         }
 
                         let chapKey = `${sIdx}_${cIdx}`;
-                        let isChapCollapsed = collapsedChapters[chapKey] !== undefined ? collapsedChapters[chapKey] : false;
+                        let isChapCollapsed = collapsedChapters[chapKey] !== undefined ? collapsedChapters[chapKey] : true;
                         html += `
                             <div class="space-y-2 bg-slate-50/60 p-4 rounded-xl border border-slate-100">
                                 <div class="flex justify-between items-center">
@@ -862,24 +801,26 @@
 
             saveAppDataToCloud();
             closeRenameModal();
+            renderHome();
         }
 
         function deleteChapter(sIdx, cIdx) {
             if (confirm('Xóa chương này cùng toàn bộ đề thi bên trong?')) {
                 appData.subjects[sIdx].chapters.splice(cIdx, 1);
                 saveAppDataToCloud();
+                renderHome();
             }
         }
 
         function toggleSubjectCollapse(sIdx) {
-            let current = collapsedSubjects[sIdx] !== undefined ? collapsedSubjects[sIdx] : false;
+            let current = collapsedSubjects[sIdx] !== undefined ? collapsedSubjects[sIdx] : true;
             collapsedSubjects[sIdx] = !current;
             renderHome();
         }
 
         function toggleChapterCollapse(sIdx, cIdx) {
             let key = `${sIdx}_${cIdx}`;
-            let current = collapsedChapters[key] !== undefined ? collapsedChapters[key] : false;
+            let current = collapsedChapters[key] !== undefined ? collapsedChapters[key] : true;
             collapsedChapters[key] = !current;
             renderHome();
         }
@@ -889,19 +830,19 @@
             document.getElementById('modal-subject').classList.remove('hidden');
         }
         function closeSubjectModal() { document.getElementById('modal-subject').classList.add('hidden'); }
-        
         function saveNewSubject() {
             const name = document.getElementById('input-new-subject').value.trim();
             if (!name) return alert('Vui lòng nhập tên môn học!');
             appData.subjects.push({ name: name, chapters: [] });
             saveAppDataToCloud();
             closeSubjectModal();
+            renderHome();
         }
-
         function deleteSubject(sIdx) {
             if (confirm('Xóa môn học này?')) {
                 appData.subjects.splice(sIdx, 1);
                 saveAppDataToCloud();
+                renderHome();
             }
         }
 
@@ -946,6 +887,7 @@
             }
         }
 
+        // HÀM TẢI FILE WORD / FOLDER DỰÁ TRÊN MAMMOTH.JS
         async function saveNewExam() {
             const sIdx = document.getElementById('modal-select-subject').value;
             const folderInput = document.getElementById('modal-input-folder');
@@ -1033,14 +975,16 @@
             }
 
             if (processedCount === 0) {
-                return alert('Không bóc tách được câu hỏi nào! Vui lòng đảm bảo file .docx có câu hỏi dạng Q1 hoặc Câu 1 và A. B. C. D.');
+                return alert('Không bóc tách được câu hỏi nào! Vui lòng đảm bảo bạn chọn đúng file .docx.');
             }
 
             saveAppDataToCloud();
             closeCreateExamModal();
-            alert(`Thành công! Đã nhập và đồng bộ ${processedCount} bài học mới tới toàn bộ users.`);
+            renderHome();
+            alert(`Thành công! Đã nhập ${processedCount} bài học mới.`);
         }
 
+        // BỘ TÁCH CÂU HỎI THUẬT TOÁN TỐI ƯU
         function parseBulkQuestions(text) {
             if (!text) return [];
 
@@ -1103,6 +1047,7 @@
             if (confirm('Xóa bài học này?')) {
                 appData.subjects[sIdx].chapters[cIdx].exams.splice(eIdx, 1);
                 saveAppDataToCloud();
+                renderHome();
             }
         }
 
@@ -1135,8 +1080,6 @@
         function renderQuestion() {
             const container = document.getElementById('question-container');
             const q = activeQuestions[currentQuestionIndex];
-            if (!q) return;
-
             const selectedAns = userAnswers[currentQuestionIndex];
             const isAnswered = selectedAns !== undefined;
             let isAdmin = currentUser && currentUser.role === 'admin';
@@ -1220,6 +1163,7 @@
             closeEditQuestionModal();
             renderQuestion();
             renderPalette();
+            alert('Đã cập nhật câu hỏi thành công!');
         }
 
         function selectAnswer(optIdx) {
@@ -1375,6 +1319,7 @@
                     if (imported && imported.subjects) {
                         appData = imported;
                         saveAppDataToCloud();
+                        renderHome();
                         alert('Nhập dữ liệu thành công!');
                     } else { alert('File JSON không hợp lệ!'); }
                 } catch (err) { alert('Lỗi đọc file!'); }
