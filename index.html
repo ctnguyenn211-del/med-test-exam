@@ -452,9 +452,13 @@
                     let docRef = window.firebaseDoc(window.firebaseDB, "users_list", user);
                     let snap = await window.firebaseGetDoc(docRef);
                     if (snap.exists()) {
-                        errEl.innerText = "Tên đăng nhập đã tồn tại!";
-                        errEl.classList.remove('hidden');
-                        return;
+                        let data = snap.data();
+                        // Cho phép ghi đè nếu tài khoản cũ đã bị xóa trước đó
+                        if (data.status !== 'deleted') {
+                            errEl.innerText = "Tên đăng nhập đã tồn tại!";
+                            errEl.classList.remove('hidden');
+                            return;
+                        }
                     }
                     await window.firebaseSetDoc(docRef, { username: user, password: pass, status: 'pending', role: 'member' });
                     alert('Đăng ký thành công! Vui lòng chờ Admin phê duyệt.');
@@ -485,6 +489,9 @@
                     let html = '';
                     querySnap.forEach((docSnap) => {
                         let u = docSnap.data();
+                        // Bỏ qua tài khoản đã bị xóa
+                        if (u.status === 'deleted') return;
+
                         let isPending = u.status === 'pending';
                         html += `
                             <div class="bg-slate-50 p-4 rounded-xl border flex justify-between items-center" id="user-row-${u.username}">
@@ -533,7 +540,7 @@
 
                 try {
                     let docRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
-                    window.firebaseSetDoc(docRef, { status: 'deleted' }, { merge: true });
+                    await window.firebaseDeleteDoc(docRef);
                 } catch(e) {}
             }
         }
