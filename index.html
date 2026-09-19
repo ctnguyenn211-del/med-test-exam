@@ -263,7 +263,7 @@
         </div>
     </div>
 
-    <!-- Script xử lý logic kết hợp Offline Storage (LocalStorage Fallback) -->
+    <!-- Script xử lý logic -->
     <script>
         let appData = { subjects: [], mistakes: [], habits: {} };
         let currentExam = null;
@@ -311,7 +311,6 @@
             }
         }
 
-        // Tải dữ liệu ưu tiên từ Cloud, nếu lỗi mạng/offline sẽ tự động lấy từ bộ nhớ máy (LocalStorage)
         async function loadDataFromCloud() {
             try {
                 if (window.firebaseDB) {
@@ -319,7 +318,6 @@
                     const docSnap = await window.firebaseGetDoc(docRef);
                     if (docSnap.exists()) {
                         appData = docSnap.data();
-                        // Lưu đồng thời vào localStorage để phòng hờ mất mạng
                         localStorage.setItem("vmu_local_backup", JSON.stringify(appData));
                         renderHome();
                         updateMistakeBadge();
@@ -328,18 +326,14 @@
                     }
                 }
             } catch (e) {
-                console.warn("Không thể kết nối Cloud Firestore, chuyển sang dùng bộ nhớ cục bộ:", e);
+                console.warn("Dùng bộ nhớ cục bộ do lỗi mạng:", e);
             }
 
-            // Fallback: Lấy từ LocalStorage nếu Cloud lỗi hoặc chưa có
             let localData = localStorage.getItem("vmu_local_backup");
             if (localData) {
-                try {
-                    appData = JSON.parse(localData);
-                } catch(err) {}
+                try { appData = JSON.parse(localData); } catch(err) {}
             }
 
-            // Nếu cả Cloud và Local đều trống, khởi tạo dữ liệu mẫu
             if (!appData.subjects || appData.subjects.length === 0) {
                 appData = {
                     subjects: [{
@@ -370,17 +364,13 @@
         }
 
         async function saveDataToCloud() {
-            // Luôn lưu vào máy trước để đảm bảo an toàn tuyệt đối
             localStorage.setItem("vmu_local_backup", JSON.stringify(appData));
-
             try {
                 if (window.firebaseDB) {
                     const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
                     await window.firebaseSetDoc(docRef, appData);
                 }
-            } catch (e) {
-                console.warn("Lưu lên Cloud thất bại (đang chạy offline), dữ liệu đã được lưu an toàn trên trình duyệt.", e);
-            }
+            } catch (e) {}
             updateMistakeBadge();
         }
 
@@ -417,6 +407,12 @@
             }
         }
 
+        // Hàm trích xuất số từ tên chương để sắp xếp chuẩn từ thấp đến cao (VD: Chương 2 -> 2, Chương 10 -> 10)
+        function extractChapterNumber(name) {
+            let match = name.match(/\d+/);
+            return match ? parseInt(match[0]) : 9999;
+        }
+
         function renderHome() {
             const container = document.getElementById('subjects-container');
             if (!appData.subjects || appData.subjects.length === 0) {
@@ -426,6 +422,11 @@
 
             let html = '';
             appData.subjects.forEach((subj, sIdx) => {
+                // TỰ ĐỘNG SẮP XẾP CHƯƠNG TỪ THẤP ĐẾN CAO (VD: Chương 2 -> Chương 7 -> Chương 10)
+                if (subj.chapters && subj.chapters.length > 0) {
+                    subj.chapters.sort((a, b) => extractChapterNumber(a.chapterName) - extractChapterNumber(b.chapterName));
+                }
+
                 let isSubjCollapsed = collapsedSubjects[sIdx] !== undefined ? collapsedSubjects[sIdx] : true;
                 html += `
                     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
