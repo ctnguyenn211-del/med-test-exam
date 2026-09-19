@@ -14,7 +14,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { 
-            getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, updateDoc, onSnapshot, runTransaction 
+            getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, updateDoc, onSnapshot 
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -39,77 +39,6 @@
         window.firebaseDeleteDoc = deleteDoc;
         window.firebaseUpdateDoc = updateDoc;
         window.firebaseOnSnapshot = onSnapshot;
-        window.firebaseRunTransaction = runTransaction;
-
-/* ================= VMU_SYNC_FIXED_V1 =================
-   Simple personal-study sync:
-   - Firebase is the source of truth when explicitly refreshing.
-   - Realtime listener never blindly overwrites local edits.
-   - A manual sync always pulls the latest cloud snapshot.
-   - Failed cloud operations never clear local data.
-======================================================== */
-window.VMU_SYNC_FIXED_V1 = true;
-
-window.vmuSyncFromCloudNow = async function(showMessage = true) {
-    try {
-        const ref = window.firebaseDoc(window.firebaseDb, "users", "my_data");
-        const snap = await window.firebaseGetDoc(ref);
-
-        if (!snap.exists()) {
-            if (showMessage) alert("Firebase chưa có dữ liệu.");
-            return false;
-        }
-
-        const cloud = snap.data() || {};
-        const cloudData = cloud.data || cloud.appData || cloud;
-
-        if (!cloudData || typeof cloudData !== "object") {
-            if (showMessage) alert("Dữ liệu Firebase không hợp lệ.");
-            return false;
-        }
-
-        const normalized = normalizeAppData(cloneAppData(cloudData));
-        appData = normalized;
-
-        // Reset the acknowledged base to exactly what was downloaded.
-        baseAppData = cloneAppData(normalized);
-        baseCloudUpdatedAt = cloud.updatedAt || Date.now();
-
-        try {
-            localStorage.setItem("appData", JSON.stringify(appData));
-            localStorage.setItem("VMU_LAST_CLOUD_DATA", JSON.stringify(appData));
-            localStorage.setItem("VMU_LAST_CLOUD_UPDATED_AT", String(baseCloudUpdatedAt));
-        } catch (e) {
-            console.warn("[VMU SYNC] Không lưu được local cache:", e);
-        }
-
-        if (typeof renderAll === "function") renderAll();
-        else if (typeof renderApp === "function") renderApp();
-
-        if (showMessage) alert("Đã tải dữ liệu mới nhất từ Firebase.");
-        return true;
-    } catch (e) {
-        console.error("[VMU SYNC] Pull Firebase failed:", e);
-        if (showMessage) alert("Không thể đồng bộ từ Firebase: " + (e.message || e));
-        return false;
-    }
-};
-
-window.vmuSyncStatus = "ready";
-window.vmuSetSyncStatus = function(status, message) {
-    window.vmuSyncStatus = status;
-    const candidates = [
-        document.getElementById("syncStatus"),
-        document.getElementById("firebaseStatus"),
-        document.querySelector("[data-sync-status]")
-    ].filter(Boolean);
-    candidates.forEach(el => {
-        el.textContent = message || status;
-        el.dataset.syncStatus = status;
-    });
-};
-
-
 
         window.addEventListener('DOMContentLoaded', () => {
             if (typeof window.initAppSession === 'function') {
@@ -117,69 +46,7 @@ window.vmuSetSyncStatus = function(status, message) {
             }
         });
     </script>
-
-<style id="VMU_SYNC_BUTTON_FIXED_V1">
-#vmuSyncNowFixedBtn{
-  position:fixed;right:18px;bottom:18px;z-index:99999;
-  border:0;border-radius:999px;padding:10px 15px;
-  font-weight:700;cursor:pointer;
-  box-shadow:0 3px 14px rgba(0,0,0,.18);
-}
-#vmuSyncNowFixedBtn.sync-busy{opacity:.65;cursor:wait}
-</style>
-
-
-<script id="VMU_SYNC_CACHE_GUARD_V1">
-/* Preserve an emergency local copy before the application starts. */
-(function(){
-  try{
-    const keys=["appData","VMU_APP_DATA","vmuAppData"];
-    for(const k of keys){
-      const v=localStorage.getItem(k);
-      if(v && v.length>20){
-        localStorage.setItem("VMU_EMERGENCY_BACKUP_"+k,v);
-        break;
-      }
-    }
-  }catch(e){ console.warn("[VMU] cache guard:",e); }
-})();
-</script>
-
-
-<script id="VMU_ADMIN_ONLY_GUARD_V1">
-(function(){
-  try{
-    const raw = localStorage.getItem("vmu_current_user");
-    if(raw){
-      const u = JSON.parse(raw);
-      if(!u || u.role !== "admin" || String(u.username).toLowerCase() !== "admin"){
-        localStorage.removeItem("vmu_current_user");
-      }
-    }
-  }catch(e){
-    localStorage.removeItem("vmu_current_user");
-  }
-})();
-</script>
-
 </head>
-
-<!-- VMU_SYNC_MODEL_DOCUMENTED:
-     This build is intended for one personal account used on multiple devices.
-     Firebase is the canonical shared dataset.
-     Manual "Đồng bộ Firebase" pulls the latest cloud snapshot.
-     Local cache is retained only as a fallback and is never treated as newer
-     than Firebase merely because the page was opened on another device.
--->
-
-
-<!-- VMU ADMIN-ONLY BUILD:
-     - Chỉ tài khoản admin đăng nhập.
-     - Không còn đăng ký/member/duyệt user.
-     - Bộ đề Firebase users/my_data được giữ nguyên.
-     - users_data/admin chỉ dùng cho danh sách câu sai của Admin.
--->
-
 <body class="bg-[#FFF5F8] text-slate-800 font-sans antialiased min-h-screen flex flex-col">
 
     <!-- Navbar -->
@@ -197,6 +64,11 @@ window.vmuSetSyncStatus = function(status, message) {
             <nav class="flex items-center flex-wrap gap-2 md:gap-4">
                 <button onclick="switchTab('home')" id="nav-home" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-[#FF4081] transition"><i class="fa-solid fa-house mr-1"></i> Trang chủ</button>
                 <button onclick="switchTab('mistakes')" id="nav-mistakes" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-[#FF4081] transition relative"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Ôn câu sai <span id="badge-mistakes" class="ml-1 bg-[#FF4081] text-white text-xs px-2 py-0.5 rounded-full font-bold hidden">0</span></button>
+                <button onclick="switchTab('habit')" id="nav-habit" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-[#FF4081] transition"><i class="fa-solid fa-calendar-check mr-1"></i> Habit Tracker</button>
+                
+                <button onclick="openUsersModal()" id="nav-users-btn" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-[#FF4081] hover:bg-[#D6336C] transition hidden flex items-center">
+                    <i class="fa-solid fa-users-gear mr-1"></i> Duyệt Users
+                </button>
 
                 <div class="flex items-center space-x-2 bg-[#b52658]/50 px-3 py-1.5 rounded-xl border border-[#FFB6C1]/40 text-sm">
                     <i class="fa-solid fa-user-shield text-[#FFB6C1]" id="user-role-icon"></i>
@@ -297,7 +169,21 @@ window.vmuSetSyncStatus = function(status, message) {
             </div>
             <div id="mistakes-container" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
         </div>
-        </main>
+
+        <!-- TAB 4: HABIT TRACKER -->
+        <div id="tab-habit" class="hidden space-y-6">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                    <div><h2 class="text-2xl font-bold text-slate-900">Habit Tracker - Tiến Độ Học Tập</h2><p class="text-sm text-slate-500">Duy trì thói quen luyện đề mỗi ngày.</p></div>
+                    <div class="flex items-center gap-4 bg-[#FFF5F8] px-4 py-3 rounded-2xl border border-[#FFB6C1]">
+                        <div class="text-[#D6336C] text-2xl font-bold"><i class="fa-solid fa-fire text-[#FF4081] mr-2"></i><span id="streak-count">0</span> ngày</div>
+                        <div class="text-xs text-[#D6336C] font-medium">Chuỗi Streak liên tiếp</div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-4" id="habit-grid"></div>
+            </div>
+        </div>
+    </main>
 
     <!-- MODAL AUTH & USERS -->
     <div id="modal-auth" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
@@ -305,7 +191,7 @@ window.vmuSetSyncStatus = function(status, message) {
             <div class="text-center space-y-2">
                 <div class="bg-[#FFF5F8] text-[#D6336C] w-12 h-12 rounded-2xl flex items-center justify-center mx-auto text-xl font-bold"><i class="fa-solid fa-stethoscope"></i></div>
                 <h3 class="text-2xl font-bold text-slate-900">VMU TestExam Pro</h3>
-                <p class="text-sm text-slate-500">Đăng nhập Admin để quản lý bộ đề</p>
+                <p class="text-sm text-slate-500">Đăng nhập tài khoản cá nhân</p>
             </div>
 
             <div class="space-y-4 text-sm">
@@ -322,10 +208,25 @@ window.vmuSetSyncStatus = function(status, message) {
 
             <div class="space-y-3">
                 <button onclick="handleLogin()" class="w-full bg-[#D6336C] hover:bg-[#FF4081] text-white py-3 rounded-xl font-bold text-sm transition shadow-sm">Đăng Nhập</button>
+                <button onclick="handleRegister()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold text-sm transition">Đăng Ký Tài Khoản Mới</button>
             </div>
         </div>
     </div>
-<div id="modal-subject" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+
+    <div id="modal-users" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b pb-3">
+                <h3 class="text-lg font-bold text-slate-900"><i class="fa-solid fa-users-gear text-[#D6336C] mr-2"></i> Phê Duyệt Thành Viên</h3>
+                <button onclick="closeUsersModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div id="users-list-container" class="space-y-3"></div>
+            <div class="flex justify-end pt-2 border-t">
+                <button onclick="closeUsersModal()" class="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-subject" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
         <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <h3 class="text-lg font-bold text-slate-900">Thêm Môn Học Mới</h3>
             <input type="text" id="input-new-subject" placeholder="Nhập tên môn học..." class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C] text-sm">
@@ -424,8 +325,8 @@ window.vmuSetSyncStatus = function(status, message) {
 
     <!-- Script xử lý ứng dụng -->
     <script>
-        let appData = { subjects: [] };
-        let userPersonalData = { mistakes: [] };
+        let appData = { subjects: [], updatedAt: Date.now() };
+        let userPersonalData = { mistakes: [], habits: {} };
         let currentUser = null;
         let currentExam = null;
         let currentExamRef = { sIdx: null, cIdx: null, eIdx: null };
@@ -437,1101 +338,315 @@ window.vmuSetSyncStatus = function(status, message) {
         let collapsedSubjects = {};
         let collapsedChapters = {};
         let renameTarget = null;
+        let syncTimeout = null;
         let appDataUnsub = null;
+        let usersUnsub = null;
 
-        const ADMIN_PASSWORD = "212696";
-
-        // ============================================================
-        // ADMIN ONLY
-        // ============================================================
-        // Web cá nhân: chỉ có một tài khoản ADMIN.
-        // Bộ đề vẫn nằm trong users/my_data và không bị thay đổi.
-        // Không còn đăng ký / member / duyệt user.
-        // ============================================================
-
-        const ADMIN_USERNAME = "admin";
         const ADMIN_PASSWORD = "212696";
 
         window.initAppSession = async function() {
             let session = localStorage.getItem("vmu_current_user");
-
             if (session) {
-                try {
-                    const saved = JSON.parse(session);
-
-                    // Không cho session member/user cũ truy cập nữa.
-                    if (saved && saved.role === "admin" && saved.username === ADMIN_USERNAME) {
-                        currentUser = saved;
-                    } else {
-                        localStorage.removeItem("vmu_current_user");
-                        currentUser = null;
-                    }
-                } catch (e) {
-                    localStorage.removeItem("vmu_current_user");
-                    currentUser = null;
-                }
+                try { currentUser = JSON.parse(session); } catch(e) {}
             }
 
             if (!currentUser) {
                 document.getElementById('modal-auth').classList.remove('hidden');
-                return;
+            } else {
+                document.getElementById('modal-auth').classList.add('hidden');
+                updateNavbarUser();
+                startAppDataRealtimeSync();
+                await loadUserPersonalData();
             }
-
-            document.getElementById('modal-auth').classList.add('hidden');
-            updateNavbarUser();
-            startAppDataRealtimeSync();
-            await loadUserPersonalData();
         };
 
         function updateNavbarUser() {
-            if (!currentUser) return;
-
-            document.getElementById('nav-username').innerText = "Admin";
-
+            document.getElementById('nav-username').innerText = currentUser.username;
             const icon = document.getElementById('user-role-icon');
+            const usersBtn = document.getElementById('nav-users-btn');
             const adminBtns = document.getElementById('admin-action-buttons');
             const adminDataMenu = document.getElementById('admin-data-menu');
 
-            icon.className = "fa-solid fa-user-shield text-[#FFB6C1]";
-            adminBtns.classList.remove('hidden');
-            adminDataMenu.classList.remove('hidden');
+            if (currentUser.role === 'admin') {
+                icon.className = "fa-solid fa-user-shield text-[#FFB6C1]";
+                usersBtn.classList.remove('hidden');
+                adminBtns.classList.remove('hidden');
+                adminDataMenu.classList.remove('hidden');
+            } else {
+                icon.className = "fa-solid fa-user text-emerald-300";
+                usersBtn.classList.add('hidden');
+                adminBtns.classList.add('hidden');
+                adminDataMenu.classList.add('hidden');
+            }
         }
 
         async function handleLogin() {
-            const user = document.getElementById('auth-username').value.trim();
-            const pass = document.getElementById('auth-password').value;
-            const errEl = document.getElementById('auth-error-msg');
-
+            let user = document.getElementById('auth-username').value.trim();
+            let pass = document.getElementById('auth-password').value;
+            let errEl = document.getElementById('auth-error-msg');
             errEl.classList.add('hidden');
 
             if (!user || !pass) {
-                errEl.innerText = "Vui lòng nhập username và mật khẩu!";
+                errEl.innerText = "Vui lòng nhập đầy đủ tên và mật khẩu!";
                 errEl.classList.remove('hidden');
                 return;
             }
 
-            // CHỈ CHO ADMIN.
-            if (user.toLowerCase() !== ADMIN_USERNAME || pass !== ADMIN_PASSWORD) {
-                errEl.innerText = "Sai username hoặc mật khẩu Admin!";
-                errEl.classList.remove('hidden');
-                return;
+            if (user.toLowerCase() === 'admin' || pass === ADMIN_PASSWORD) {
+                if (pass === ADMIN_PASSWORD) {
+                    currentUser = { username: user, role: 'admin', status: 'approved' };
+                    localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
+                    document.getElementById('modal-auth').classList.add('hidden');
+                    updateNavbarUser();
+                    startAppDataRealtimeSync();
+                    await loadUserPersonalData();
+                    return;
+                }
             }
-
-            currentUser = {
-                username: ADMIN_USERNAME,
-                role: 'admin',
-                status: 'approved'
-            };
-
-            localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
-
-            document.getElementById('modal-auth').classList.add('hidden');
-            updateNavbarUser();
 
             try {
-                await startAppDataRealtimeSync();
-                await loadUserPersonalData();
-            } catch (e) {
-                console.error("[ADMIN LOGIN] Firebase init:", e);
+                if (window.firebaseDB) {
+                    let docRef = window.firebaseDoc(window.firebaseDB, "users_list", user);
+                    let snap = await window.firebaseGetDoc(docRef);
+                    if (snap.exists()) {
+                        let data = snap.data();
+                        if (data.password === pass) {
+                            if (data.status !== 'approved') {
+                                errEl.innerText = "Tài khoản của bạn đang chờ Admin phê duyệt!";
+                                errEl.classList.remove('hidden');
+                                return;
+                            }
+                            currentUser = { username: user, role: 'member', status: 'approved' };
+                            localStorage.setItem("vmu_current_user", JSON.stringify(currentUser));
+                            document.getElementById('modal-auth').classList.add('hidden');
+                            updateNavbarUser();
+                            startAppDataRealtimeSync();
+                            await loadUserPersonalData();
+                            return;
+                        }
+                    }
+                }
+            } catch(e) {}
+
+            errEl.innerText = "Sai tên đăng nhập, mật khẩu hoặc chưa được duyệt!";
+            errEl.classList.remove('hidden');
+        }
+
+        async function handleRegister() {
+            let user = document.getElementById('auth-username').value.trim();
+            let pass = document.getElementById('auth-password').value;
+            let errEl = document.getElementById('auth-error-msg');
+            errEl.classList.add('hidden');
+
+            if (!user || !pass) {
+                errEl.innerText = "Vui lòng nhập đầy đủ tên và mật khẩu!";
+                errEl.classList.remove('hidden');
+                return;
+            }
+
+            if (user.toLowerCase() === 'admin') {
+                errEl.innerText = "Tên tài khoản không hợp lệ!";
+                errEl.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                if (window.firebaseDB) {
+                    let docRef = window.firebaseDoc(window.firebaseDB, "users_list", user);
+                    let snap = await window.firebaseGetDoc(docRef);
+                    if (snap.exists()) {
+                        errEl.innerText = "Tên đăng nhập đã tồn tại!";
+                        errEl.classList.remove('hidden');
+                        return;
+                    }
+                    await window.firebaseSetDoc(docRef, { username: user, password: pass, status: 'pending', role: 'member' });
+                    alert('Đăng ký thành công! Vui lòng chờ Admin phê duyệt.');
+                }
+            } catch(e) {
+                alert('Lỗi kết nối Cloud!');
             }
         }
 
         function logoutAccount() {
-            try {
-                if (appDataUnsub) appDataUnsub();
-            } catch (e) {}
-
-            appDataUnsub = null;
+            if (appDataUnsub) appDataUnsub();
             localStorage.removeItem("vmu_current_user");
             currentUser = null;
-
             document.getElementById('auth-username').value = '';
             document.getElementById('auth-password').value = '';
             document.getElementById('modal-auth').classList.remove('hidden');
         }
+
+        function openUsersModal() {
+            if (!currentUser || currentUser.role !== 'admin') return;
+            const container = document.getElementById('users-list-container');
+            container.innerHTML = `<p class="text-sm text-slate-400 text-center py-4">Đang kết nối Realtime...</p>`;
+            document.getElementById('modal-users').classList.remove('hidden');
+
+            if (usersUnsub) usersUnsub();
+
+            try {
+                if (window.firebaseDB) {
+                    let colRef = window.firebaseCollection(window.firebaseDB, "users_list");
+                    usersUnsub = window.firebaseOnSnapshot(colRef, (querySnap) => {
+                        let html = '';
+                        querySnap.forEach((docSnap) => {
+                            let u = docSnap.data();
+                            let isPending = u.status === 'pending';
+                            html += `
+                                <div class="bg-slate-50 p-4 rounded-xl border flex justify-between items-center" id="user-row-${u.username}">
+                                    <div>
+                                        <h4 class="font-bold text-slate-800">${u.username}</h4>
+                                        <span class="text-xs px-2 py-0.5 rounded-full font-semibold ${isPending ? 'bg-[#FFF5F8] text-[#D6336C]' : 'bg-emerald-100 text-emerald-800'}" id="user-status-${u.username}">${isPending ? 'Chờ duyệt' : 'Đã duyệt'}</span>
+                                    </div>
+                                    <div class="space-x-2">
+                                        ${isPending ? `<button onclick="approveUser('${u.username}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">Phê duyệt</button>` : ''}
+                                        <button onclick="deleteUser('${u.username}')" class="bg-rose-100 hover:bg-rose-200 text-rose-700 px-3 py-1.5 rounded-lg text-xs font-bold transition">Xóa</button>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        container.innerHTML = html || `<p class="text-sm text-slate-400 text-center py-4">Chưa có thành viên nào.</p>`;
+                    });
+                }
+            } catch(e) {
+                container.innerHTML = `<p class="text-sm text-rose-500 text-center py-4">Lỗi kết nối Realtime.</p>`;
+            }
+        }
+
+        function closeUsersModal() { 
+            if (usersUnsub) { usersUnsub(); usersUnsub = null; }
+            document.getElementById('modal-users').classList.add('hidden'); 
+        }
+
+        async function approveUser(username) {
+            try {
+                if (window.firebaseDB) {
+                    let docRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
+                    await window.firebaseSetDoc(docRef, { status: 'approved' }, { merge: true });
+                }
+            } catch(e) {}
+        }
+
+        async function deleteUser(username) {
+            if (confirm(`Xóa user ${username}?`)) {
+                try {
+                    if (window.firebaseDB) {
+                        let docRef = window.firebaseDoc(window.firebaseDB, "users_list", username);
+                        await window.firebaseDeleteDoc(docRef);
+                    }
                 } catch(e) {}
             }
         }
 
-        // ============================================================
-        // FIREBASE SYNC V4
-        // Đồng bộ an toàn theo 3-way merge + Firestore transaction.
-        //
-        // Vấn đề của V3:
-        // - setDoc() ghi đè TOÀN BỘ users/my_data.
-        // - Timestamp chỉ giúp biết bản nào mới hơn, KHÔNG ngăn
-        //   một client đang giữ dữ liệu cũ ghi đè dữ liệu mới.
-        //
-        // V4:
-        // - Firebase vẫn là source of truth.
-        // - localStorage chỉ là cache/offline backup.
-        // - Mỗi subject/chapter/exam/question có ID ổn định.
-        // - Khi cloud đã thay đổi từ sau lúc client đọc:
-        //   merge 3 chiều (BASE -> LOCAL -> CLOUD), chỉ áp dụng
-        //   thay đổi thật sự của LOCAL lên CLOUD.
-        // - Ghi bằng Firestore transaction để tránh lost update.
-        // - Firebase lỗi KHÔNG reset appData.
-        // ============================================================
-
-        let isAppDataLoadedFromCloud = false;
-        let isAppDataSaving = false;
-        let pendingAppDataSave = false;
-        let syncTimeout = null;
-        let localAppDataUpdatedAt = 0;
-        let lastUploadedAppDataUpdatedAt = 0;
-
-        // Snapshot cloud gần nhất mà LOCAL đang dựa trên.
-        let baseAppData = null;
-        let baseCloudUpdatedAt = 0;
-
-        function cloneAppData(data) {
-            try {
-                return JSON.parse(JSON.stringify(data));
-            } catch (e) {
-                console.error("[SYNC] Không clone được appData:", e);
-                return { subjects: [] };
-            }
-        }
-
-        function getAppDataJSON(data = appData) {
-            try {
-                return JSON.stringify(data);
-            } catch (e) {
-                console.error("[SYNC] Không stringify được appData:", e);
-                return null;
-            }
-        }
-
-        function getAppDataLocalKey() {
-            const username =
-                currentUser && currentUser.username
-                    ? currentUser.username
-                    : "anonymous";
-
-            return "vmu_local_exam_backup_" + username;
-        }
-
-        // ------------------------------------------------------------
-        // Tạo ID ổn định cho dữ liệu cũ.
-        // Không đổi ID đã tồn tại.
-        // ------------------------------------------------------------
-        function ensureStableIds(data) {
-            if (!data || !Array.isArray(data.subjects)) {
-                return { subjects: [] };
+        // ĐỒNG BỘ REALTIME CHÍNH XÁC VỚI TIMESTAMP - KHÔNG BỊ MẤT DỮ LIỆU
+        function startAppDataRealtimeSync() {
+            let localData = localStorage.getItem("vmu_local_exam_backup");
+            if (localData) {
+                try { 
+                    appData = JSON.parse(localData); 
+                    renderHome(); 
+                } catch(err) {}
             }
 
-            data.subjects.forEach((subject, sIdx) => {
-                if (!subject.id) {
-                    subject.id = "sub_" + Date.now() + "_" + sIdx + "_" + Math.random().toString(36).slice(2, 8);
-                }
-
-                if (!Array.isArray(subject.chapters)) {
-                    subject.chapters = [];
-                }
-
-                subject.chapters.forEach((chapter, cIdx) => {
-                    if (!chapter.id) {
-                        chapter.id = "chap_" + Date.now() + "_" + sIdx + "_" + cIdx + "_" + Math.random().toString(36).slice(2, 8);
-                    }
-
-                    if (!Array.isArray(chapter.exams)) {
-                        chapter.exams = [];
-                    }
-
-                    chapter.exams.forEach((exam, eIdx) => {
-                        if (!exam.id) {
-                            exam.id = "ex_" + Date.now() + "_" + sIdx + "_" + cIdx + "_" + eIdx + "_" + Math.random().toString(36).slice(2, 8);
-                        }
-
-                        if (!Array.isArray(exam.questions)) {
-                            exam.questions = [];
-                        }
-
-                        exam.questions.forEach((question, qIdx) => {
-                            if (
-                                question.id === undefined ||
-                                question.id === null ||
-                                question.id === ""
-                            ) {
-                                question.id = "q_" + Date.now() + "_" + sIdx + "_" + cIdx + "_" + eIdx + "_" + qIdx + "_" + Math.random().toString(36).slice(2, 8);
-                            } else {
-                                // ID số cũ vẫn được giữ nguyên vì nó ổn định
-                                // trong phạm vi một exam.
-                                question.id = String(question.id);
-                            }
-                        });
-                    });
-                });
-            });
-
-            return data;
-        }
-
-        function normalizeAppData(data) {
-            const normalized = cloneAppData(data);
-            ensureStableIds(normalized);
-            return normalized;
-        }
-
-        function saveAppDataToLocal(updatedAt = localAppDataUpdatedAt) {
-            try {
-                const data = normalizeAppData(appData);
-
-                // Lưu cả BASE để khi reload trang, client vẫn biết
-                // LOCAL đang dựa trên phiên bản CLOUD nào.
-                // Điều này rất quan trọng cho 3-way merge.
-                const payload = {
-                    updatedAt: Number(updatedAt) || Date.now(),
-                    baseCloudUpdatedAt: Number(baseCloudUpdatedAt) || 0,
-                    baseData: baseAppData
-                        ? normalizeAppData(baseAppData)
-                        : null,
-                    data: data
-                };
-
-                localStorage.setItem(
-                    getAppDataLocalKey(),
-                    JSON.stringify(payload)
-                );
-            } catch (e) {
-                console.error("[SYNC] Lỗi lưu backup local:", e);
-            }
-        }
-
-        function loadAppDataFromLocal() {
-            try {
-                const raw = localStorage.getItem(getAppDataLocalKey());
-
-                if (!raw) {
-                    return {
-                        exists: false,
-                        updatedAt: 0,
-                        data: null
-                    };
-                }
-
-                const parsed = JSON.parse(raw);
-
-                if (
-                    parsed &&
-                    typeof parsed === "object" &&
-                    parsed.data &&
-                    Array.isArray(parsed.data.subjects)
-                ) {
-                    localAppDataUpdatedAt =
-                        Number(parsed.updatedAt) || 0;
-
-                    // Khôi phục BASE đã được lưu cùng local.
-                    if (
-                        parsed.baseData &&
-                        Array.isArray(parsed.baseData.subjects)
-                    ) {
-                        baseAppData = normalizeAppData(parsed.baseData);
-                        baseCloudUpdatedAt =
-                            Number(parsed.baseCloudUpdatedAt) || 0;
-                    } else {
-                        // Backup cũ chưa có BASE.
-                        // Dùng bản local làm BASE tạm thời để tránh
-                        // coi toàn bộ dữ liệu CLOUD là dữ liệu bị xóa.
-                        baseAppData = normalizeAppData(parsed.data);
-                        baseCloudUpdatedAt = 0;
-                    }
-
-                    return {
-                        exists: true,
-                        updatedAt: localAppDataUpdatedAt,
-                        data: normalizeAppData(parsed.data)
-                    };
-                }
-
-                // Tương thích backup cũ:
-                // { subjects: [...] }
-                if (
-                    parsed &&
-                    typeof parsed === "object" &&
-                    Array.isArray(parsed.subjects)
-                ) {
-                    localAppDataUpdatedAt = 1;
-                    baseAppData = normalizeAppData(parsed);
-                    baseCloudUpdatedAt = 0;
-
-                    return {
-                        exists: true,
-                        updatedAt: 1,
-                        data: normalizeAppData(parsed)
-                    };
-                }
-
-            } catch (e) {
-                console.error("[SYNC] Lỗi đọc backup local:", e);
-            }
-
-            return {
-                exists: false,
-                updatedAt: 0,
-                data: null
-            };
-        }
-
-        function getCloudAppData(docSnap) {
-            if (!docSnap.exists()) return null;
-
-            const raw = docSnap.data();
-
-            if (
-                !raw ||
-                typeof raw !== "object" ||
-                !Array.isArray(raw.subjects)
-            ) {
-                return null;
-            }
-
-            const cloudUpdatedAt =
-                Number(raw.__syncUpdatedAt) || 0;
-
-            const data = { ...raw };
-            delete data.__syncUpdatedAt;
-
-            return {
-                updatedAt: cloudUpdatedAt,
-                data: normalizeAppData(data)
-            };
-        }
-
-        // ------------------------------------------------------------
-        // 3-WAY MERGE
-        //
-        // BASE = lần cuối client đã đọc từ Cloud
-        // LOCAL = dữ liệu client đang muốn lưu
-        // CLOUD = dữ liệu mới nhất đang nằm trên Firebase
-        //
-        // Chỉ thay đổi phần LOCAL thực sự sửa so với BASE.
-        // Vì vậy client A sửa Exam 1 sẽ không xóa Exam 2 mà
-        // client B vừa thêm.
-        // ------------------------------------------------------------
-
-        function mergeEntityCollection(baseArr, localArr, cloudArr, key, nestedMerge) {
-            baseArr = Array.isArray(baseArr) ? baseArr : [];
-            localArr = Array.isArray(localArr) ? localArr : [];
-            cloudArr = Array.isArray(cloudArr) ? cloudArr : [];
-
-            const baseMap = new Map(baseArr.map(x => [String(x[key]), x]));
-            const localMap = new Map(localArr.map(x => [String(x[key]), x]));
-            const cloudMap = new Map(cloudArr.map(x => [String(x[key]), x]));
-
-            const result = [];
-            const used = new Set();
-
-            // Giữ thứ tự LOCAL trước; phù hợp với giao diện hiện tại.
-            for (const localItem of localArr) {
-                const id = String(localItem[key]);
-                if (used.has(id)) continue;
-
-                const baseItem = baseMap.get(id);
-                const cloudItem = cloudMap.get(id);
-
-                if (!baseItem) {
-                    // Item mới do LOCAL tạo.
-                    result.push(cloneAppData(localItem));
-                } else if (!cloudItem) {
-                    // LOCAL vẫn giữ item mà CLOUD đã xóa.
-                    // Đây là xung đột rõ ràng -> thay đổi mới nhất
-                    // của LOCAL được ưu tiên.
-                    result.push(cloneAppData(localItem));
-                } else {
-                    const localChanged =
-                        getAppDataJSON(localItem) !== getAppDataJSON(baseItem);
-
-                    if (localChanged) {
-                        result.push(
-                            nestedMerge
-                                ? nestedMerge(baseItem, localItem, cloudItem)
-                                : cloneAppData(localItem)
-                        );
-                    } else {
-                        // LOCAL không đổi item này -> giữ phiên bản CLOUD.
-                        result.push(cloneAppData(cloudItem));
-                    }
-                }
-
-                used.add(id);
-            }
-
-            // Các item có trên CLOUD nhưng LOCAL không chứa.
-            // Nếu item có từ BASE và LOCAL đã xóa -> không thêm lại.
-            for (const cloudItem of cloudArr) {
-                const id = String(cloudItem[key]);
-                if (used.has(id)) continue;
-
-                const baseItem = baseMap.get(id);
-
-                if (!baseItem) {
-                    // CLOUD tự thêm item mới -> giữ lại.
-                    result.push(cloneAppData(cloudItem));
-                } else {
-                    // BASE có + LOCAL xóa => LOCAL deletion thắng.
-                }
-
-                used.add(id);
-            }
-
-            return result;
-        }
-
-        function mergeQuestion(baseQ, localQ, cloudQ) {
-            // Question không có collection con.
-            const localChanged =
-                getAppDataJSON(localQ) !== getAppDataJSON(baseQ);
-
-            return localChanged
-                ? cloneAppData(localQ)
-                : cloneAppData(cloudQ);
-        }
-
-        function mergeExam(baseExam, localExam, cloudExam) {
-            const merged = cloneAppData(cloudExam);
-
-            merged.title = localExam.title;
-
-            merged.questions = mergeEntityCollection(
-                baseExam.questions,
-                localExam.questions,
-                cloudExam.questions,
-                "id",
-                mergeQuestion
-            );
-
-            return merged;
-        }
-
-        function mergeChapter(baseChapter, localChapter, cloudChapter) {
-            const merged = cloneAppData(cloudChapter);
-
-            merged.chapterName = localChapter.chapterName;
-
-            merged.exams = mergeEntityCollection(
-                baseChapter.exams,
-                localChapter.exams,
-                cloudChapter.exams,
-                "id",
-                mergeExam
-            );
-
-            return merged;
-        }
-
-        function mergeSubject(baseSubject, localSubject, cloudSubject) {
-            const merged = cloneAppData(cloudSubject);
-
-            merged.name = localSubject.name;
-
-            merged.chapters = mergeEntityCollection(
-                baseSubject.chapters,
-                localSubject.chapters,
-                cloudSubject.chapters,
-                "id",
-                mergeChapter
-            );
-
-            return merged;
-        }
-
-        function mergeAppDataThreeWay(base, local, cloud) {
-            base = normalizeAppData(base || { subjects: [] });
-            local = normalizeAppData(local || { subjects: [] });
-            cloud = normalizeAppData(cloud || { subjects: [] });
-
-            return {
-                subjects: mergeEntityCollection(
-                    base.subjects,
-                    local.subjects,
-                    cloud.subjects,
-                    "id",
-                    mergeSubject
-                )
-            };
-        }
-
-        function nextSyncVersion(...versions) {
-            const maxVersion = Math.max(
-                Date.now(),
-                ...versions.map(v => Number(v) || 0)
-            );
-
-            return maxVersion;
-        }
-
-        async function startAppDataRealtimeSync() {
-
-            if (appDataUnsub) {
-                try {
-                    appDataUnsub();
-                } catch (e) {}
-
-                appDataUnsub = null;
-            }
-
-            isAppDataLoadedFromCloud = false;
-            isAppDataSaving = false;
-            pendingAppDataSave = false;
-            lastUploadedAppDataUpdatedAt = 0;
-            baseAppData = null;
-            baseCloudUpdatedAt = 0;
-
-            // --------------------------------------------------------
-            // 1. Khôi phục local trước
-            // --------------------------------------------------------
-            const local = loadAppDataFromLocal();
-
-            if (local.exists && local.data) {
-                appData = normalizeAppData(local.data);
-
-                console.log(
-                    "[SYNC] Khôi phục local:",
-                    appData.subjects.length,
-                    "subjects | updatedAt:",
-                    local.updatedAt
-                );
-
-                renderHome();
-            }
-
-            if (!window.firebaseDB) {
-                console.warn("[SYNC] Firebase chưa sẵn sàng.");
-                return;
-            }
+            if (appDataUnsub) appDataUnsub();
 
             try {
-                const docRef = window.firebaseDoc(
-                    window.firebaseDB,
-                    "users",
-                    "my_data"
-                );
+                if (window.firebaseDB) {
+                    const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
+                    
+                    appDataUnsub = window.firebaseOnSnapshot(docRef, (docSnap) => {
+                        if (docSnap.exists()) {
+                            let cloudData = docSnap.data();
+                            let cloudTime = cloudData.updatedAt || 0;
+                            let localTime = appData.updatedAt || 0;
 
-                appDataUnsub = window.firebaseOnSnapshot(
-                    docRef,
-
-                    async (docSnap) => {
-
-                        // ------------------------------------------------
-                        // CLOUD CHƯA CÓ DOCUMENT
-                        // ------------------------------------------------
-                        if (!docSnap.exists()) {
-
-                            console.warn(
-                                "[SYNC] Cloud chưa có users/my_data."
-                            );
-
-                            // Nếu local đã có BASE được khôi phục từ cache,
-                            // giữ nguyên BASE để lần upload đầu tiên không
-                            // biến toàn bộ dữ liệu CLOUD thành deletion.
-                            if (!baseAppData) {
-                                baseAppData = normalizeAppData({ subjects: [] });
-                                baseCloudUpdatedAt = 0;
-                            }
-
-                            if (
-                                appData &&
-                                Array.isArray(appData.subjects) &&
-                                appData.subjects.length > 0
-                            ) {
-                                console.log(
-                                    "[SYNC] Cloud trống -> upload dữ liệu local."
-                                );
-
-                                if (!localAppDataUpdatedAt) {
-                                    localAppDataUpdatedAt = Date.now();
-                                    saveAppDataToLocal(
-                                        localAppDataUpdatedAt
-                                    );
-                                }
-
-                                await forceSaveAppDataToCloud();
-
-                            } else {
-
-                                appData = {
-                                    subjects: []
-                                };
-
-                                localAppDataUpdatedAt = Date.now();
-
-                                saveAppDataToLocal(
-                                    localAppDataUpdatedAt
-                                );
-
+                            // Chỉ ghi đè dữ liệu ở máy khi bản trên Cloud MỚI HƠN bản ở Local
+                            if (cloudTime > localTime) {
+                                appData = cloudData;
+                                localStorage.setItem("vmu_local_exam_backup", JSON.stringify(cloudData));
                                 renderHome();
+                            } else if (localTime > cloudTime && currentUser && currentUser.role === 'admin') {
+                                // Nếu dữ liệu ở Local Admin mới hơn Cloud (do mạng chập chờn trước đó), tự động đẩy lại lên Cloud
+                                saveAppDataToCloud();
                             }
-
-                            isAppDataLoadedFromCloud = true;
-                            return;
-                        }
-
-                        const cloud = getCloudAppData(docSnap);
-
-                        if (!cloud) {
-                            console.error(
-                                "[SYNC] Document Cloud không hợp lệ."
-                            );
-                            return;
-                        }
-
-                        const cloudUpdatedAt = cloud.updatedAt;
-                        const localUpdatedAt =
-                            Number(localAppDataUpdatedAt) || 0;
-
-                        // QUAN TRỌNG:
-                        // Không được cập nhật BASE ở đây khi CLOUD chỉ vừa
-                        // thay đổi. BASE phải là phiên bản CLOUD mà LOCAL
-                        // thực sự đang dựa vào. Nếu cập nhật BASE ngay lúc
-                        // nhận snapshot mới, một item mới do thiết bị khác
-                        // thêm có thể bị hiểu nhầm là "LOCAL đã xóa item đó".
-                        //
-                        // BASE chỉ được cập nhật khi:
-                        // 1) LOCAL chấp nhận hẳn CLOUD, hoặc
-                        // 2) transaction đã commit thành công.
-                        console.log(
-                            "[SYNC] So sánh phiên bản:",
-                            {
-                                local: localUpdatedAt,
-                                cloud: cloudUpdatedAt,
-                                saving: isAppDataSaving,
-                                pending: pendingAppDataSave
-                            }
-                        );
-
-                        // ------------------------------------------------
-                        // Nếu cloud mới hơn local -> nhận cloud.
-                        // ------------------------------------------------
-                        if (cloudUpdatedAt > localUpdatedAt) {
-
-                            console.log(
-                                "[SYNC] CLOUD MỚI HƠN LOCAL -> nhận Cloud."
-                            );
-
-                            appData = cloneAppData(cloud.data);
-
-                            // CLOUD đã được chấp nhận làm LOCAL mới.
-                            // Từ thời điểm này đây chính là BASE.
-                            baseAppData = cloneAppData(cloud.data);
-                            baseCloudUpdatedAt = cloudUpdatedAt;
-
-                            localAppDataUpdatedAt =
-                                cloudUpdatedAt;
-
-                            saveAppDataToLocal(
-                                localAppDataUpdatedAt
-                            );
-
-                            isAppDataLoadedFromCloud = true;
-                            pendingAppDataSave = false;
-
-                            renderHome();
-                            return;
-                        }
-
-                        // ------------------------------------------------
-                        // Cloud cùng version và dữ liệu giống local.
-                        // Đây thường là snapshot sau chính write của client.
-                        // ------------------------------------------------
-                        if (
-                            cloudUpdatedAt === localUpdatedAt &&
-                            getAppDataJSON(cloud.data) === getAppDataJSON(appData)
-                        ) {
-                            // Snapshot này chính là phiên bản LOCAL đã lưu.
-                            // Có thể xác nhận CLOUD là BASE an toàn.
-                            baseAppData = cloneAppData(cloud.data);
-                            baseCloudUpdatedAt = cloudUpdatedAt;
-                            isAppDataLoadedFromCloud = true;
-                            return;
-                        }
-
-                        // ------------------------------------------------
-                        // LOCAL mới hơn hoặc hai bên khác nhau:
-                        // KHÔNG được lấy Cloud đè LOCAL.
-                        // forceSave() sẽ dùng transaction + 3-way merge.
-                        // ------------------------------------------------
-                        if (
-                            cloudUpdatedAt < localUpdatedAt ||
-                            getAppDataJSON(cloud.data) !== getAppDataJSON(appData)
-                        ) {
-                            console.log(
-                                "[SYNC] Có khác biệt LOCAL/CLOUD -> merge an toàn."
-                            );
-
-                            if (!isAppDataSaving) {
-                                await forceSaveAppDataToCloud();
-                            }
-                        }
-
-                        isAppDataLoadedFromCloud = true;
-                    },
-
-                    (err) => {
-                        console.error(
-                            "[SYNC] Firebase Realtime lỗi:",
-                            err
-                        );
-
-                        // Firebase lỗi KHÔNG được reset appData.
-                        renderHome();
-                    }
-                );
-
-            } catch (e) {
-
-                console.error(
-                    "[SYNC] Không thể khởi tạo Firebase listener:",
-                    e
-                );
-
-                // KHÔNG reset appData.
-            }
-        }
-
-        async function forceSaveAppDataToCloud() {
-
-            if (
-                !currentUser ||
-                currentUser.role !== "admin"
-            ) {
-                console.warn(
-                    "[SYNC] Chỉ admin mới được lưu appData."
-                );
-
-                return false;
-            }
-
-            if (!window.firebaseDB) {
-                console.warn(
-                    "[SYNC] Firebase chưa sẵn sàng."
-                );
-
-                saveAppDataToLocal(
-                    localAppDataUpdatedAt
-                );
-
-                return false;
-            }
-
-            if (!window.firebaseRunTransaction) {
-                console.error(
-                    "[SYNC] Firebase runTransaction chưa được khởi tạo."
-                );
-
-                saveAppDataToLocal(localAppDataUpdatedAt);
-                return false;
-            }
-
-            // Đảm bảo dữ liệu đang lưu có ID ổn định.
-            appData = normalizeAppData(appData);
-
-            if (!localAppDataUpdatedAt) {
-                localAppDataUpdatedAt = Date.now();
-            }
-
-            const dataAtStart = cloneAppData(appData);
-            const versionAtStart = Number(localAppDataUpdatedAt) || Date.now();
-
-            // Snapshot BASE tương ứng với lúc local được tạo/chỉnh sửa.
-            const baseAtStart = cloneAppData(
-                baseAppData || { subjects: [] }
-            );
-
-            const baseVersionAtStart =
-                Number(baseCloudUpdatedAt) || 0;
-
-            saveAppDataToLocal(versionAtStart);
-
-            isAppDataSaving = true;
-
-            try {
-
-                const docRef = window.firebaseDoc(
-                    window.firebaseDB,
-                    "users",
-                    "my_data"
-                );
-
-                let committedData = null;
-                let committedVersion = 0;
-
-                await window.firebaseRunTransaction(
-                    window.firebaseDB,
-                    async (transaction) => {
-
-                        const snap = await transaction.get(docRef);
-
-                        let cloudData = { subjects: [] };
-                        let cloudVersion = 0;
-
-                        if (snap.exists()) {
-                            const raw = snap.data() || {};
-
-                            cloudVersion =
-                                Number(raw.__syncUpdatedAt) || 0;
-
-                            if (Array.isArray(raw.subjects)) {
-                                const cleanRaw = { ...raw };
-                                delete cleanRaw.__syncUpdatedAt;
-                                cloudData = normalizeAppData(cleanRaw);
-                            }
-                        }
-
-                        // Nếu cloud vẫn đúng BASE mà client đang dựa vào,
-                        // không cần merge -> ghi LOCAL trực tiếp.
-                        let finalData;
-
-                        if (
-                            cloudVersion === baseVersionAtStart &&
-                            getAppDataJSON(cloudData) === getAppDataJSON(baseAtStart)
-                        ) {
-                            finalData = cloneAppData(dataAtStart);
+                        } else if (currentUser && currentUser.role === 'admin' && appData.subjects && appData.subjects.length > 0) {
+                            saveAppDataToCloud();
                         } else {
-                            // Cloud đã thay đổi -> 3-way merge.
-                            finalData = mergeAppDataThreeWay(
-                                baseAtStart,
-                                dataAtStart,
-                                cloudData
-                            );
+                            appData = { subjects: [], updatedAt: Date.now() };
+                            renderHome();
                         }
-
-                        const finalVersion = nextSyncVersion(
-                            versionAtStart,
-                            cloudVersion,
-                            baseVersionAtStart
-                        );
-
-                        transaction.set(
-                            docRef,
-                            {
-                                ...finalData,
-                                __syncUpdatedAt: finalVersion
-                            }
-                        );
-
-                        committedData = finalData;
-                        committedVersion = finalVersion;
-                    }
-                );
-
-                // Nếu upload trong lúc đó không có local edit mới,
-                // ta có thể coi kết quả transaction là local hiện tại.
-                if (Number(localAppDataUpdatedAt) === versionAtStart) {
-                    appData = normalizeAppData(committedData);
-                    localAppDataUpdatedAt = committedVersion;
-                } else {
-                    // Có edit mới xảy ra trong lúc transaction chạy.
-                    // Không được lấy snapshot cũ đè edit mới.
-                    // BASE được cập nhật để lần save tiếp theo merge
-                    // edit mới vào cloud vừa commit.
-                    baseAppData = normalizeAppData(committedData);
-                    baseCloudUpdatedAt = committedVersion;
+                    }, (err) => {
+                        console.error("Lỗi đồng bộ Realtime:", err);
+                    });
                 }
-
-                // Sau transaction, BASE luôn là dữ liệu đã commit lên cloud.
-                baseAppData = normalizeAppData(committedData);
-                baseCloudUpdatedAt = committedVersion;
-
-                lastUploadedAppDataUpdatedAt = committedVersion;
-
-                saveAppDataToLocal(
-                    localAppDataUpdatedAt
-                );
-
-                console.log(
-                    "[SYNC] Transaction upload thành công. Version:",
-                    committedVersion
-                );
-
-                return true;
-
             } catch (e) {
-
-                console.error(
-                    "[SYNC] Transaction Firebase thất bại:",
-                    e
-                );
-
-                // Dữ liệu local VẪN được giữ.
-                saveAppDataToLocal(
-                    localAppDataUpdatedAt
-                );
-
-                return false;
-
-            } finally {
-                isAppDataSaving = false;
+                console.error("Lỗi khởi tạo Realtime Sync:", e);
             }
         }
 
+        // LƯU DỮ LIỆU TỨC THÌ ĐẾN FIREBASE CLOUD (LATENCY = 0ms)
         function saveAppDataToCloud() {
+            if (!currentUser || currentUser.role !== 'admin') return;
+            
+            appData.updatedAt = Date.now();
+            let jsonStr = JSON.stringify(appData);
+            localStorage.setItem("vmu_local_exam_backup", jsonStr);
 
-            if (
-                !currentUser ||
-                currentUser.role !== "admin"
-            ) {
-                return;
-            }
-
-            appData = normalizeAppData(appData);
-
-            // Mỗi thay đổi local -> tạo version mới.
-            // +1 giúp tránh trường hợp hai thay đổi xảy ra trong
-            // cùng một millisecond.
-            localAppDataUpdatedAt =
-                Math.max(
-                    Date.now(),
-                    Number(localAppDataUpdatedAt) + 1
-                );
-
-            saveAppDataToLocal(
-                localAppDataUpdatedAt
-            );
-
-            pendingAppDataSave = true;
-
-            if (syncTimeout) {
-                clearTimeout(syncTimeout);
-                syncTimeout = null;
-            }
-
+            if (syncTimeout) clearTimeout(syncTimeout);
             syncTimeout = setTimeout(async () => {
-
-                syncTimeout = null;
-
-                const versionAtSchedule =
-                    localAppDataUpdatedAt;
-
-                await forceSaveAppDataToCloud();
-
-                // Nếu trong lúc upload lại có thay đổi mới,
-                // tiếp tục upload phiên bản mới.
-                if (
-                    localAppDataUpdatedAt >
-                    versionAtSchedule
-                ) {
-                    pendingAppDataSave = true;
-
-                    if (!syncTimeout) {
-                        syncTimeout = setTimeout(async () => {
-                            syncTimeout = null;
-                            await forceSaveAppDataToCloud();
-                        }, 100);
+                try {
+                    if (window.firebaseDB) {
+                        const docRef = window.firebaseDoc(window.firebaseDB, "users", "my_data");
+                        await window.firebaseSetDoc(docRef, appData);
                     }
-                } else {
-                    pendingAppDataSave = false;
+                } catch (e) {
+                    console.error("Lỗi đẩy dữ liệu Cloud:", e);
+                    alert("⚠️ Cảnh báo đồng bộ: Dung lượng câu hỏi quá lớn (vượt giới hạn 1MB của Firestore) hoặc mất kết nối! Dữ liệu tạm thời chỉ lưu trên máy này.");
                 }
-
-            }, 300);
+            }, 0);
         }
 
-        // ------------------------------------------------------------
-        // LOAD DỮ LIỆU CÁ NHÂN
-        // ------------------------------------------------------------
         async function loadUserPersonalData() {
-            if (!currentUser || !currentUser.username) return;
-
-            const userKey = "admin";
-            const localKey = "vmu_personal_admin";
-            let localPersonalData = null;
-
+            let userKey = currentUser.username;
             try {
-                const local = localStorage.getItem(localKey);
-                if (local) {
-                    const parsed = JSON.parse(local);
-                    if (parsed && typeof parsed === "object") {
-                        localPersonalData = {
-                            mistakes: Array.isArray(parsed.mistakes) ? parsed.mistakes : []
-                        };
-                        userPersonalData = localPersonalData;
+                if (window.firebaseDB) {
+                    const docRef = window.firebaseDoc(window.firebaseDB, "users_data", userKey);
+                    const docSnap = await window.firebaseGetDoc(docRef);
+                    if (docSnap.exists()) {
+                        userPersonalData = docSnap.data();
+                    } else {
+                        userPersonalData = { mistakes: [], habits: {} };
                     }
                 }
-            } catch (e) {
-                console.error("[PERSONAL] Lỗi đọc local:", e);
+            } catch(e) {
+                let local = localStorage.getItem("vmu_personal_" + userKey);
+                if (local) userPersonalData = JSON.parse(local);
             }
-
-            try {
-                if (!window.firebaseDB) {
-                    if (!localPersonalData) userPersonalData = { mistakes: [] };
-                    updateMistakeBadge();
-                    return;
-                }
-
-                const docRef = window.firebaseDoc(window.firebaseDB, "users_data", userKey);
-                const docSnap = await window.firebaseGetDoc(docRef);
-
-                if (docSnap.exists()) {
-                    const cloudData = docSnap.data() || {};
-                    userPersonalData = {
-                        mistakes: Array.isArray(cloudData.mistakes) ? cloudData.mistakes : []
-                    };
-                    localStorage.setItem(localKey, JSON.stringify(userPersonalData));
-
-                    // Ghi lại document chỉ với mistakes để xóa field habits cũ.
-                    await saveUserPersonalData(true);
-                } else if (localPersonalData && localPersonalData.mistakes.length > 0) {
-                    userPersonalData = localPersonalData;
-                    await saveUserPersonalData(true);
-                } else {
-                    userPersonalData = { mistakes: [] };
-                    localStorage.setItem(localKey, JSON.stringify(userPersonalData));
-                }
-            } catch (e) {
-                console.error("[PERSONAL] Lỗi tải Firebase:", e);
-                if (!localPersonalData) userPersonalData = { mistakes: [] };
-            }
-
             updateMistakeBadge();
+            renderHabitTracker();
         }
 
-        async function saveUserPersonalData(silent = false) {
-            if (!currentUser || !currentUser.username) return false;
-
-            const userKey = "admin";
-            const localKey = "vmu_personal_admin";
-
-            userPersonalData = {
-                mistakes: Array.isArray(userPersonalData.mistakes)
-                    ? userPersonalData.mistakes
-                    : []
-            };
-
+        function saveUserPersonalData() {
+            let userKey = currentUser.username;
+            localStorage.setItem("vmu_personal_" + userKey, JSON.stringify(userPersonalData));
             try {
-                localStorage.setItem(localKey, JSON.stringify(userPersonalData));
-            } catch (e) {
-                console.error("[PERSONAL] Không thể lưu local:", e);
-            }
-
-            if (!window.firebaseDB) {
-                updateMistakeBadge();
-                return false;
-            }
-
-            try {
-                const docRef = window.firebaseDoc(window.firebaseDB, "users_data", userKey);
-                // setDoc không merge: document chỉ còn mistakes, field habits cũ bị xóa.
-                await window.firebaseSetDoc(docRef, {
-                    mistakes: userPersonalData.mistakes
-                }, { merge: true });
-
-                if (!silent) console.log("[PERSONAL] Đã đồng bộ Firebase.");
-                updateMistakeBadge();
-                return true;
-            } catch (e) {
-                console.error("[PERSONAL] Lỗi lưu Firebase:", e);
-                updateMistakeBadge();
-                return false;
-            }
+                if (window.firebaseDB) {
+                    const docRef = window.firebaseDoc(window.firebaseDB, "users_data", userKey);
+                    window.firebaseSetDoc(docRef, userPersonalData);
+                }
+            } catch(e) {}
+            updateMistakeBadge();
         }
 
         function switchTab(tabId) {
             document.getElementById('tab-home').classList.add('hidden');
             document.getElementById('tab-exam').classList.add('hidden');
             document.getElementById('tab-mistakes').classList.add('hidden');
+            document.getElementById('tab-habit').classList.add('hidden');
 
             document.getElementById('nav-home').classList.remove('bg-[#FF4081]');
             document.getElementById('nav-mistakes').classList.remove('bg-[#FF4081]');
+            document.getElementById('nav-habit').classList.remove('bg-[#FF4081]');
 
             if (tabId === 'home') {
                 document.getElementById('tab-home').classList.remove('hidden');
@@ -1543,9 +658,14 @@ window.vmuSetSyncStatus = function(status, message) {
                 document.getElementById('tab-mistakes').classList.remove('hidden');
                 document.getElementById('nav-mistakes').classList.add('bg-[#FF4081]');
                 renderMistakes();
+            } else if (tabId === 'habit') {
+                document.getElementById('tab-habit').classList.remove('hidden');
+                document.getElementById('nav-habit').classList.add('bg-[#FF4081]');
+                renderHabitTracker();
             }
         }
-function extractNumber(name) {
+
+        function extractNumber(name) {
             let match = name.match(/\d+/);
             return match ? parseInt(match[0]) : 9999;
         }
@@ -1852,7 +972,7 @@ function extractNumber(name) {
             alert(`Thành công! Đã nhập ${processedCount} bài học mới.`);
         }
 
-        // BỘ BÓC TÁCH CÂU HỎI THÔNG MINH - DIỆT SẠCH MỌI TIỀN TỐ DƯ THỪA (Q:, A:, E:, CÂU..., ANS...)
+        // BỘ BÓC TÁCH CÂU HỎI THÔNG MINH - DIỆT SẠCH MỌI TIỀN TỐ DƯ THỪA
         function parseBulkQuestions(text) {
             if (!text) return [];
 
@@ -1864,7 +984,7 @@ function extractNumber(name) {
                 block = block.trim();
                 if (!block) return;
 
-                // 1. Tách và làm sạch giải thích (E:, Exp:, Explanation:, Giải thích:)
+                // 1. Tách và làm sạch giải thích
                 let explanation = "";
                 let expMatch = block.match(/(?:Giải\s*thích|Explanation|Exp|E)[\.\:\s]+([\s\S]*)$/i);
                 if (expMatch) {
@@ -1872,7 +992,7 @@ function extractNumber(name) {
                     block = block.substring(0, expMatch.index).trim();
                 }
 
-                // 2. Tách đáp án đúng dạng "Đáp án: A", "Key: A", "Ans: A"
+                // 2. Tách đáp án đúng
                 let explicitKeyIdx = -1;
                 let keyMatch = block.match(/(?:Đáp\s*án|Answer|Key|Ans|ĐA)[\.\:\s]*([A-D])/i);
                 if (keyMatch) {
@@ -1880,7 +1000,7 @@ function extractNumber(name) {
                     block = block.substring(0, keyMatch.index).trim();
                 }
 
-                // 3. Định vị vị trí A, B, C, D (hoặc A:, B:, C:, D:)
+                // 3. Định vị vị trí A, B, C, D
                 let aMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?A[\.\)\:\-\]\s]+)/i);
                 let bMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?B[\.\)\:\-\]\s]+)/i);
                 let cMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?C[\.\)\:\-\]\s]+)/i);
@@ -2080,6 +1200,7 @@ function extractNumber(name) {
                     saveUserPersonalData();
                 }
             }
+            recordHabitToday();
             
             renderQuestion();
             renderPalette();
@@ -2173,6 +1294,32 @@ function extractNumber(name) {
             renderQuestion(); renderPalette(); updateStats();
         }
 
+        function recordHabitToday() {
+            let todayStr = new Date().toISOString().split('T')[0];
+            if (!userPersonalData.habits) userPersonalData.habits = {};
+            userPersonalData.habits[todayStr] = true;
+            saveUserPersonalData();
+        }
+
+        function renderHabitTracker() {
+            const grid = document.getElementById('habit-grid');
+            if (!grid) return;
+            let html = '', streak = 0, today = new Date();
+            let dates = [];
+            for (let i = 6; i >= 0; i--) {
+                let d = new Date(); d.setDate(today.getDate() - i); dates.push(d);
+            }
+            dates.forEach(d => {
+                let dateStr = d.toISOString().split('T')[0];
+                let isChecked = userPersonalData.habits && userPersonalData.habits[dateStr];
+                let dayName = d.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' });
+                if (isChecked) streak++;
+                html += `<div class="bg-slate-50 p-4 rounded-2xl border ${isChecked ? 'border-[#D6336C] bg-[#FFF5F8]' : 'border-slate-200'} text-center space-y-2"><div class="text-xs font-semibold text-slate-500">${dayName}</div><div class="text-xl ${isChecked ? 'text-[#D6336C]' : 'text-slate-300'}"><i class="fa-solid ${isChecked ? 'fa-circle-check' : 'fa-circle'}"></i></div><div class="text-[10px] ${isChecked ? 'text-[#D6336C] font-bold' : 'text-slate-400'}">${isChecked ? 'Đã học' : 'Chưa học'}</div></div>`;
+            });
+            grid.innerHTML = html;
+            document.getElementById('streak-count').innerText = streak;
+        }
+
         function exportBackup() {
             if (!currentUser || currentUser.role !== 'admin') return alert('Bạn không có quyền thực hiện thao tác này!');
             let dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appData, null, 2));
@@ -2184,88 +1331,24 @@ function extractNumber(name) {
             dlAnchor.remove();
         }
 
-        async function importBackup(event) {
-            if (!currentUser || currentUser.role !== 'admin') {
-                return alert('Bạn không có quyền thực hiện thao tác này!');
-            }
-
+        function importBackup(event) {
+            if (!currentUser || currentUser.role !== 'admin') return alert('Bạn không có quyền thực hiện thao tác này!');
             let file = event.target.files[0];
             if (!file) return;
-
-            try {
-                const text = await file.text();
-                const imported = JSON.parse(text);
-
-                if (
-                    !imported ||
-                    typeof imported !== 'object' ||
-                    !Array.isArray(imported.subjects)
-                ) {
-                    alert('File JSON không hợp lệ!');
-                    return;
-                }
-
-                // Chuẩn hóa ID trước khi merge/ghi Cloud.
-                appData = normalizeAppData(imported);
-
-                // Import là thao tác thay đổi dữ liệu có chủ đích.
-                // Đặt version mới và để forceSave() dùng transaction +
-                // 3-way merge, tránh ghi đè dữ liệu Cloud vừa được cập nhật
-                // bởi một thiết bị khác.
-                localAppDataUpdatedAt = Math.max(
-                    Date.now(),
-                    Number(localAppDataUpdatedAt) + 1
-                );
-                saveAppDataToLocal(localAppDataUpdatedAt);
-                const success = await forceSaveAppDataToCloud();
-
-                renderHome();
-
-                if (success) {
-                    alert('Nhập dữ liệu thành công và đã đồng bộ lên Cloud!');
-                } else {
-                    alert('Đã nhập dữ liệu và lưu local, nhưng chưa upload được lên Cloud. Hãy kiểm tra kết nối Firebase.');
-                }
-
-            } catch (err) {
-                console.error('[IMPORT] Lỗi:', err);
-                alert('Lỗi đọc file JSON!');
-            } finally {
-                // Cho phép chọn lại chính file đó.
-                event.target.value = '';
-            }
+            let reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    let imported = JSON.parse(e.target.result);
+                    if (imported && imported.subjects) {
+                        appData = imported;
+                        saveAppDataToCloud();
+                        renderHome();
+                        alert('Nhập dữ liệu thành công!');
+                    } else { alert('File JSON không hợp lệ!'); }
+                } catch (err) { alert('Lỗi đọc file!'); }
+            };
+            reader.readAsText(file);
         }
     </script>
-
-<script id="VMU_SYNC_BUTTON_FIXED_V1">
-(function(){
-  function installSyncButton(){
-    if(document.getElementById("vmuSyncNowFixedBtn")) return;
-    const btn=document.createElement("button");
-    btn.id="vmuSyncNowFixedBtn";
-    btn.type="button";
-    btn.textContent="🔄 Đồng bộ Firebase";
-    btn.title="Tải dữ liệu mới nhất từ Firebase";
-    btn.addEventListener("click", async function(){
-      if(btn.classList.contains("sync-busy")) return;
-      btn.classList.add("sync-busy");
-      btn.textContent="⏳ Đang đồng bộ...";
-      try{
-        if(typeof window.vmuSyncFromCloudNow !== "function"){
-          throw new Error("Hệ thống đồng bộ chưa sẵn sàng.");
-        }
-        await window.vmuSyncFromCloudNow(true);
-      }finally{
-        btn.classList.remove("sync-busy");
-        btn.textContent="🔄 Đồng bộ Firebase";
-      }
-    });
-    document.body.appendChild(btn);
-  }
-  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",installSyncButton);
-  else installSyncButton();
-})();
-</script>
-
 </body>
 </html>
