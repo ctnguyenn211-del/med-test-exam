@@ -13,7 +13,9 @@
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { 
+            getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot 
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCpbC9aaVJdLiscTP4D8dCqqvRn1tAalxg",
@@ -31,6 +33,8 @@
         window.firebaseDB = db;
         window.firebaseDoc = doc;
         window.firebaseSetDoc = setDoc;
+        window.firebaseDeleteDoc = deleteDoc;
+        window.firebaseCollection = collection;
         window.firebaseOnSnapshot = onSnapshot;
 
         window.addEventListener('DOMContentLoaded', () => {
@@ -58,7 +62,6 @@
                 <button onclick="switchTab('home')" id="nav-home" class="px-3 py-1.5 rounded-lg text-sm font-medium bg-[#FF4081] transition"><i class="fa-solid fa-house mr-1"></i> Trang chủ</button>
                 <button onclick="switchTab('mistakes')" id="nav-mistakes" class="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-[#FF4081] transition relative"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Ôn câu sai <span id="badge-mistakes" class="ml-1 bg-[#FF4081] text-white text-xs px-2 py-0.5 rounded-full font-bold hidden">0</span></button>
                 
-                <!-- Nút đăng nhập Admin đơn giản -->
                 <div class="flex items-center space-x-2 bg-[#b52658]/50 px-3 py-1.5 rounded-xl border border-[#FFB6C1]/40 text-sm">
                     <i class="fa-solid fa-user-shield text-[#FFB6C1]" id="user-role-icon"></i>
                     <span id="nav-username" class="font-medium">Học viên</span>
@@ -265,6 +268,9 @@
         let userMistakes = [];
         let isAdmin = false;
 
+        let rawSubjectsList = [];
+        let rawExamsList = [];
+
         let currentExam = null;
         let currentExamRef = { sIdx: null, cIdx: null, eIdx: null };
         let currentQuestionIndex = 0;
@@ -275,7 +281,6 @@
         let collapsedSubjects = {};
         let collapsedChapters = {};
         let renameTarget = null;
-        let appDataUnsub = null;
 
         const ADMIN_PASSWORD = "212696";
 
@@ -330,9 +335,8 @@
             }
         }
 
-        // CƠ CHẾ ĐỒNG BỘ REALTIME CHUẨN TỰ ĐỘNG (SINGLE SOURCE OF TRUTH)
+        // ĐỒNG BỘ REALTIME THEO CẤU TRÚC COLLECTION - GIẢI QUYẾT TRIỆT ĐỂ LỖI 1MB FIRESTORE
         function startRealtimeSync() {
-            // Hiển thị bộ nhớ đệm Local nếu có để phản hồi tức thì
             let cached = localStorage.getItem("vmu_exam_backup");
             if (cached) {
                 try {
@@ -341,50 +345,88 @@
                 } catch(e) {}
             }
 
-            if (appDataUnsub) appDataUnsub();
+            if (!window.firebaseDB) return;
 
-            try {
-                if (window.firebaseDB) {
-                    const docRef = window.firebaseDoc(window.firebaseDB, "app_data", "vmu_exam_pro");
-                    
-                    // Lắng nghe dữ liệu trực tiếp từ Firebase Cloud
-                    appDataUnsub = window.firebaseOnSnapshot(docRef, (docSnap) => {
-                        if (docSnap.exists()) {
-                            appData = docSnap.data();
-                            if (!appData.subjects) appData.subjects = [];
-                            localStorage.setItem("vmu_exam_backup", JSON.stringify(appData));
-                            renderHome();
-                        } else {
-                            // Nếu Cloud chưa từng có dữ liệu, khởi tạo document trống
-                            if (!appData.subjects) appData = { subjects: [] };
-                            renderHome();
-                        }
-                    }, (err) => {
-                        console.error("Lỗi đồng bộ Realtime:", err);
-                    });
-                }
-            } catch (e) {
-                console.error("Không thể kết nối Firebase Realtime:", e);
-            }
+            // 1. Lắng nghe danh sách môn học
+            window.firebaseOnSnapshot(window.firebaseCollection(window.firebaseDB, "vmu_subjects"), (subjSnap) => {
+                rawSubjectsList = [];
+                subjSnap.forEach(docSnap => rawSubjectsList.push(docSnap.data()));
+                rebuildAppData();
+            });
+
+            // 2. Lắng nghe từng bài thi riêng lẻ
+            window.firebaseOnSnapshot(window.firebaseCollection(window.firebaseDB, "vmu_exams"), (examSnap) => {
+                rawExamsList = [];
+                examSnap.forEach(docSnap => rawExamsList.push(docSnap.data()));
+                rebuildAppData();
+            });
         }
 
-        // HÀM LƯU ĐẨY THẲNG LÊN CLOUD - KHÔNG HOÃN DEBOUNCE - KHÔNG BỊ XUNG ĐỘT TIMESTAMP
-        async function saveAppDataToCloud() {
-            if (!isAdmin) return;
+        function rebuildAppData() {
+            let subjectsMap = {};
 
-            // Lưu bản đệm Local
-            localStorage.setItem("vmu_exam_backup", JSON.stringify(appData));
+            // Đưa môn học vào Map
+            rawSubjectsList.forEach(s => {
+                subjectsMap[s.name] = { id: s.id, name: s.name, chapters: [] };
+            });
 
-            // Đẩy trực tiếp lên Firebase Cloud
-            if (window.firebaseDB) {
-                try {
-                    const docRef = window.firebaseDoc(window.firebaseDB, "app_data", "vmu_exam_pro");
-                    await window.firebaseSetDoc(docRef, appData);
-                } catch (e) {
-                    console.error("Lỗi đẩy Cloud:", e);
-                    alert("⚠️ Cảnh báo: Vượt quá dung lượng 1MB của Firestore hoặc mất mạng! Dữ liệu hiện được lưu trên máy này.");
+            // Gắn các bài thi vào từng chương/môn tương ứng
+            rawExamsList.forEach(ex => {
+                if (!subjectsMap[ex.subjectName]) {
+                    subjectsMap[ex.subjectName] = { id: 'subj_' + Date.now(), name: ex.subjectName, chapters: [] };
                 }
-            }
+                let subjObj = subjectsMap[ex.subjectName];
+                let chapObj = subjObj.chapters.find(c => c.chapterName === ex.chapterName);
+                if (!chapObj) {
+                    chapObj = { chapterName: ex.chapterName, exams: [] };
+                    subjObj.chapters.push(chapObj);
+                }
+                chapObj.exams.push(ex);
+            });
+
+            appData.subjects = Object.values(subjectsMap);
+            localStorage.setItem("vmu_exam_backup", JSON.stringify(appData));
+            renderHome();
+        }
+
+        // HÀM LƯU / XÓA THEO DOCUMENT RIÊNG
+        async function saveSubjectToCloud(subjObj) {
+            if (!isAdmin || !window.firebaseDB) return;
+            try {
+                let docRef = window.firebaseDoc(window.firebaseDB, "vmu_subjects", subjObj.id);
+                await window.firebaseSetDoc(docRef, { id: subjObj.id, name: subjObj.name });
+            } catch(e) { console.error(e); }
+        }
+
+        async function deleteSubjectFromCloud(subjObj) {
+            if (!isAdmin || !window.firebaseDB) return;
+            try {
+                let docRef = window.firebaseDoc(window.firebaseDB, "vmu_subjects", subjObj.id);
+                await window.firebaseDeleteDoc(docRef);
+                
+                // Xóa tất cả bài thi thuộc môn này
+                rawExamsList.forEach(async (ex) => {
+                    if (ex.subjectName === subjObj.name) {
+                        await window.firebaseDeleteDoc(window.firebaseDoc(window.firebaseDB, "vmu_exams", ex.id));
+                    }
+                });
+            } catch(e) { console.error(e); }
+        }
+
+        async function saveExamToCloud(examObj) {
+            if (!isAdmin || !window.firebaseDB) return;
+            try {
+                let docRef = window.firebaseDoc(window.firebaseDB, "vmu_exams", examObj.id);
+                await window.firebaseSetDoc(docRef, examObj);
+            } catch(e) { console.error(e); }
+        }
+
+        async function deleteExamFromCloud(examId) {
+            if (!isAdmin || !window.firebaseDB) return;
+            try {
+                let docRef = window.firebaseDoc(window.firebaseDB, "vmu_exams", examId);
+                await window.firebaseDeleteDoc(docRef);
+            } catch(e) { console.error(e); }
         }
 
         function loadMistakes() {
@@ -538,21 +580,24 @@
 
             let { type, sIdx, cIdx, eIdx } = renameTarget;
             if (type === 'chapter') {
-                appData.subjects[sIdx].chapters[cIdx].chapterName = newVal;
+                let oldName = appData.subjects[sIdx].chapters[cIdx].chapterName;
+                appData.subjects[sIdx].chapters[cIdx].exams.forEach(ex => {
+                    ex.chapterName = newVal;
+                    saveExamToCloud(ex);
+                });
             } else {
-                appData.subjects[sIdx].chapters[cIdx].exams[eIdx].title = newVal;
+                let ex = appData.subjects[sIdx].chapters[cIdx].exams[eIdx];
+                ex.title = newVal;
+                saveExamToCloud(ex);
             }
 
-            saveAppDataToCloud();
             closeRenameModal();
-            renderHome();
         }
 
         function deleteChapter(sIdx, cIdx) {
             if (confirm('Xóa chương này cùng toàn bộ đề thi bên trong?')) {
-                appData.subjects[sIdx].chapters.splice(cIdx, 1);
-                saveAppDataToCloud();
-                renderHome();
+                let chap = appData.subjects[sIdx].chapters[cIdx];
+                chap.exams.forEach(ex => deleteExamFromCloud(ex.id));
             }
         }
 
@@ -578,17 +623,15 @@
         function saveNewSubject() {
             const name = document.getElementById('input-new-subject').value.trim();
             if (!name) return alert('Vui lòng nhập tên môn học!');
-            appData.subjects.push({ name: name, chapters: [] });
-            saveAppDataToCloud();
+            let newSubj = { id: 'subj_' + Date.now(), name: name };
+            saveSubjectToCloud(newSubj);
             closeSubjectModal();
-            renderHome();
         }
 
         function deleteSubject(sIdx) {
-            if (confirm('Xóa môn học này?')) {
-                appData.subjects.splice(sIdx, 1);
-                saveAppDataToCloud();
-                renderHome();
+            if (confirm('Xóa môn học này cùng toàn bộ bài thi liên quan?')) {
+                let subj = appData.subjects[sIdx];
+                deleteSubjectFromCloud(subj);
             }
         }
 
@@ -636,7 +679,7 @@
         async function saveNewExam() {
             const sIdx = document.getElementById('modal-select-subject').value;
             const folderInput = document.getElementById('modal-input-folder');
-            const fileInput = document.getElementById('modal-input-[#docs');
+            const fileInput = document.getElementById('modal-input-docs');
 
             if (sIdx === "" || sIdx === null) return alert('Vui lòng chọn môn học!');
             let subj = appData.subjects[sIdx];
@@ -648,13 +691,16 @@
             if (folderInput.files && folderInput.files.length > 0) {
                 for (let f of folderInput.files) filesToProcess.push({ file: f, isFolder: true });
             }
-            if (document.getElementById('modal-input-docs').files && document.getElementById('modal-input-docs').files.length > 0) {
-                for (let f of document.getElementById('modal-input-docs').files) filesToProcess.push({ file: f, isFolder: false });
+            if (fileInput.files && fileInput.files.length > 0) {
+                for (let f of fileInput.files) filesToProcess.push({ file: f, isFolder: false });
             }
 
             if (filesToProcess.length === 0) {
                 return alert('Vui lòng chọn ít nhất 1 file .docx hoặc folder!');
             }
+
+            // Đảm bảo thông tin môn học có trên Cloud
+            saveSubjectToCloud(subj);
 
             for (let item of filesToProcess) {
                 let file = item.file;
@@ -668,50 +714,35 @@
                     let questions = parseBulkQuestions(result.value);
 
                     if (questions && questions.length > 0) {
-                        let targetChapter = null;
+                        let chapterName = "Chương 1";
                         let examTitle = fileName.replace(/\.[^/.]+$/, "");
 
                         if (item.isFolder) {
                             let pathParts = file.webkitRelativePath ? file.webkitRelativePath.split('/') : [fileName];
-                            let chapterName = "Chương 1";
                             if (pathParts.length > 1) {
                                 chapterName = pathParts[pathParts.length - 2].replace(/[_]/g, ' ').trim();
-                            }
-                            targetChapter = subj.chapters.find(c => c.chapterName.toLowerCase() === chapterName.toLowerCase());
-                            if (!targetChapter) {
-                                targetChapter = { chapterName: chapterName, exams: [] };
-                                subj.chapters.push(targetChapter);
                             }
                         } else {
                             let chapSelectVal = document.getElementById('modal-select-chapter').value;
                             if (chapSelectVal === "NEW") {
-                                let newChapName = document.getElementById('modal-input-new-chapter').value.trim() || "Chương mới";
-                                targetChapter = subj.chapters.find(c => c.chapterName.toLowerCase() === newChapName.toLowerCase());
-                                if (!targetChapter) {
-                                    targetChapter = { chapterName: newChapName, exams: [] };
-                                    subj.chapters.push(targetChapter);
-                                }
+                                chapterName = document.getElementById('modal-input-new-chapter').value.trim() || "Chương mới";
                             } else {
                                 let idx = parseInt(chapSelectVal);
                                 if (!isNaN(idx) && subj.chapters[idx]) {
-                                    targetChapter = subj.chapters[idx];
-                                } else {
-                                    targetChapter = { chapterName: "Chương 1", exams: [] };
-                                    subj.chapters.push(targetChapter);
+                                    chapterName = subj.chapters[idx].chapterName;
                                 }
                             }
                         }
 
-                        let existingExam = targetChapter.exams.find(e => e.title === examTitle);
-                        if (existingExam) {
-                            existingExam.questions = questions;
-                        } else {
-                            targetChapter.exams.push({
-                                id: 'ex_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-                                title: examTitle,
-                                questions: questions
-                            });
-                        }
+                        let examObj = {
+                            id: 'ex_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
+                            subjectName: subj.name,
+                            chapterName: chapterName,
+                            title: examTitle,
+                            questions: questions
+                        };
+
+                        await saveExamToCloud(examObj);
                         processedCount++;
                     }
                 } catch (err) {
@@ -723,10 +754,8 @@
                 return alert('Không bóc tách được câu hỏi nào! Vui lòng đảm bảo bạn chọn đúng file .docx.');
             }
 
-            saveAppDataToCloud();
             closeCreateExamModal();
-            renderHome();
-            alert(`Thành công! Đã nhập ${processedCount} bài học mới.`);
+            alert(`Thành công! Đã nhập ${processedCount} bài học mới lên Cloud.`);
         }
 
         // BỘ BÓC TÁCH CÂU HỎI THÔNG MINH
@@ -822,9 +851,8 @@
 
         function deleteExam(sIdx, cIdx, eIdx) {
             if (confirm('Xóa bài học này?')) {
-                appData.subjects[sIdx].chapters[cIdx].exams.splice(eIdx, 1);
-                saveAppDataToCloud();
-                renderHome();
+                let ex = appData.subjects[sIdx].chapters[cIdx].exams[eIdx];
+                deleteExamFromCloud(ex.id);
             }
         }
 
@@ -933,7 +961,7 @@
                     originalQ.correctAnswer = q.correctAnswer;
                     originalQ.explanation = q.explanation;
                 }
-                saveAppDataToCloud();
+                saveExamToCloud(examObj);
             }
 
             closeEditQuestionModal();
@@ -1054,19 +1082,37 @@
             dlAnchor.remove();
         }
 
-        function importBackup(event) {
+        async function importBackup(event) {
             if (!isAdmin) return alert('Bạn không có quyền Admin!');
             let file = event.target.files[0];
             if (!file) return;
             let reader = new FileReader();
-            reader.onload = function(e) {
+            reader.onload = async function(e) {
                 try {
                     let imported = JSON.parse(e.target.result);
                     if (imported && imported.subjects) {
-                        appData = imported;
-                        saveAppDataToCloud();
-                        renderHome();
-                        alert('Nhập dữ liệu thành công!');
+                        for (let s of imported.subjects) {
+                            let subjId = s.id || ('subj_' + Date.now() + '_' + Math.floor(Math.random() * 1000));
+                            await saveSubjectToCloud({ id: subjId, name: s.name });
+
+                            if (s.chapters) {
+                                for (let c of s.chapters) {
+                                    if (c.exams) {
+                                        for (let ex of c.exams) {
+                                            let examObj = {
+                                                id: ex.id || ('ex_' + Date.now() + '_' + Math.floor(Math.random() * 10000)),
+                                                subjectName: s.name,
+                                                chapterName: c.chapterName,
+                                                title: ex.title,
+                                                questions: ex.questions
+                                            };
+                                            await saveExamToCloud(examObj);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        alert('Nhập dữ liệu thành công lên Cloud!');
                     } else { alert('File JSON không hợp lệ!'); }
                 } catch (err) { alert('Lỗi đọc file!'); }
             };
