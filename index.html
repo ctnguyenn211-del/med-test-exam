@@ -8,6 +8,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- KaTeX để hiển thị công thức như $K^+$, $t_{1/2}$ -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
     <!-- Mammoth.js để đọc file Word (.docx) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
     <!-- Firebase SDKs -->
@@ -341,10 +344,27 @@
                 .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
-        // Hiển thị văn bản có định dạng: **đậm**, *nghiêng*. Xuống dòng do CSS "whitespace-pre-line" đảm nhiệm.
+        // Công thức LaTeX: $...$ (cùng dòng) hoặc $$...$$. Bỏ qua trường hợp "$5 và $10" (sau $ mở là khoảng trắng / trước $ đóng là khoảng trắng / sau $ đóng là số)
+        const MATH_RE = /\$\$[\s\S]+?\$\$|\$(?!\s)[^$\n]*?[^\s$]\$(?!\d)/g;
+        const MATH_PH = /\uE010(\d+)\uE011/g;
+        function protectMath(s, store) {
+            return s.replace(MATH_RE, m => { store.push(m); return '\uE010' + (store.length - 1) + '\uE011'; });
+        }
+        function renderMath(m) {
+            const display = m.startsWith('$$');
+            const tex = (display ? m.slice(2, -2) : m.slice(1, -1)).trim();
+            try {
+                if (window.katex) return window.katex.renderToString(tex, { throwOnError: false, displayMode: display });
+            } catch (e) {}
+            return esc(m);   // chưa tải được KaTeX: hiện nguyên văn
+        }
+
+        // Hiển thị văn bản có định dạng: **đậm**, *nghiêng*, công thức $...$. Xuống dòng do CSS "whitespace-pre-line" đảm nhiệm.
         // Luôn escape HTML trước nên an toàn; dấu * lẻ/thiếu cặp sẽ tự đóng ở cuối chuỗi.
         function fmt(s) {
-            const t = esc(String(s == null ? '' : s).trim());
+            const store = [];
+            const raw = protectMath(String(s == null ? '' : s).trim(), store);
+            const t = esc(raw);
             let out = '', bold = false, ital = false;
             for (let k = 0; k < t.length; k++) {
                 if (t[k] === '*') {
@@ -356,7 +376,7 @@
             }
             if (ital) out += '</i>';
             if (bold) out += '</b>';
-            return out;
+            return out.replace(MATH_PH, (_, n) => renderMath(store[n]));
         }
 
         function newId(prefix) {
@@ -1268,10 +1288,12 @@
 
         // Hoàn thiện văn bản sau khi tách: *x* / **x** do người soạn tự gõ -> nghiêng/đậm, dấu * còn sót bị bỏ
         function finishText(s) {
+            const store = [];
+            s = protectMath(s, store);
             s = s.replace(/\*\*([^*\n]+)\*\*/g, BO + '$1' + BC)
                  .replace(/\*([^*\n]+)\*/g, IO + '$1' + IC)
                  .replace(/\*/g, '');
-            return tokensToMd(s).trim();
+            return tokensToMd(s).trim().replace(MATH_PH, (_, n) => store[n]);
         }
 
         // Nếu dấu định dạng đứng trước nhãn ("Câu 1.", "A.", "Giải thích:"...) thì dời ra sau nhãn
