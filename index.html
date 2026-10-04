@@ -1190,90 +1190,112 @@
         }
 
         // BỘ BÓC TÁCH CÂU HỎI THÔNG MINH
+        // Quy ước: mỗi câu bắt đầu bằng "Câu N." ; các đáp án A. B. C. D. (đáp án đúng có dấu * ở đầu);
+        // phần "Giải thích." (nếu có) nằm cuối câu.
         function parseBulkQuestions(text) {
             if (!text) return [];
 
-            let rawText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-            let blocks = rawText.split(/(?=(?:^|\n)\s*(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:]\s+[A-Z\u00C0-\u1EF9]))/i);
-            let questions = [];
+            const rawText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/ /g, ' ');
+
+            // 1) Tách thành từng khối câu hỏi. Chỉ nhận dòng tiêu đề đứng ĐẦU DÒNG (tránh cắt nhầm giữa câu).
+            const headerRe = /^[ \t]*(?:(?:Câu|Question)[ \t]*\d+[ \t]*[\.\:\)]|Q[ \t]*\d*[ \t]*[\.\:\)])/gim;
+            const numRe = /^[ \t]*\d+[ \t]*[\.\)][ \t]+\S/gm;   // dự phòng: "1. Nội dung..."
+            let starts = [...rawText.matchAll(headerRe)].map(m => m.index);
+            if (starts.length === 0) starts = [...rawText.matchAll(numRe)].map(m => m.index);
+            if (starts.length === 0) return [];
+
+            const blocks = starts.map((s, i) => rawText.substring(s, i + 1 < starts.length ? starts[i + 1] : rawText.length));
+            const questions = [];
 
             blocks.forEach(block => {
                 block = block.trim();
                 if (!block) return;
 
+                // 2) Tách phần giải thích (phải là từ khóa "Giải thích."/"Explanation:" thật sự, không phải chữ "e" bất kỳ)
                 let explanation = "";
-                let expMatch = block.match(/(?:Giải\s*thích|Explanation|Exp|E)[\.\:\s]+([\s\S]*)$/i);
-                if (expMatch) {
-                    explanation = expMatch[1].replace(/^(?:Giải\s*thích|Explanation|Exp|E)[\.\:\s]*/i, '').trim();
-                    block = block.substring(0, expMatch.index).trim();
+                const expCands = [
+                    block.match(/(?:^|\s)(?:Giải\s*thích|Lời\s*giải|Explanation)[ \t]*[\.\:][ \t]*/i),
+                    block.match(/(?:^|\n)[ \t]*Exp[ \t]*[\.\:][ \t]*/i)
+                ].filter(Boolean);
+                if (expCands.length) {
+                    const em = expCands.reduce((a, b) => (a.index <= b.index ? a : b));
+                    explanation = block.substring(em.index + em[0].length).trim();
+                    block = block.substring(0, em.index).trim();
                 }
+                // bỏ dòng gạch phân cách "---" còn sót
+                explanation = explanation.replace(/(?:\n\s*)?-{3,}\s*$/, '').replace(/\*([^*\n]+)\*/g, '$1').trim();
+                block = block.replace(/(?:\n\s*)?-{3,}\s*$/, '').trim();
 
+                // 3) Đáp án khai báo riêng (nếu có): "Đáp án: B" - phải nằm ở đầu dòng
                 let explicitKeyIdx = -1;
-                let keyMatch = block.match(/(?:Đáp\s*án|Answer|Key|Ans|ĐA)[\.\:\s]*([A-D])/i);
+                const keyMatch = block.match(/(?:^|\n)[ \t]*(?:Đáp\s*án(?:\s*đúng)?|Answer|Key|Ans|ĐA)[ \t]*[.:-]?[ \t]*([A-D])(?![\p{L}\d])/iu);
                 if (keyMatch) {
                     explicitKeyIdx = keyMatch[1].toUpperCase().charCodeAt(0) - 65;
                     block = block.substring(0, keyMatch.index).trim();
                 }
 
-                let aMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?A[\.\)\:\-\]\s]+)/i);
-                let bMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?B[\.\)\:\-\]\s]+)/i);
-                let cMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?C[\.\)\:\-\]\s]+)/i);
-                let dMatch = block.match(/(?:^|\s|\n)(\*?\s*[\(\[]?D[\.\)\:\-\]\s]+)/i);
-
-                if (aMatch && bMatch && cMatch && dMatch) {
-                    let posA = aMatch.index + aMatch[0].indexOf(aMatch[1]);
-                    let posB = bMatch.index + bMatch[0].indexOf(bMatch[1]);
-                    let posC = cMatch.index + cMatch[0].indexOf(cMatch[1]);
-                    let posD = dMatch.index + dMatch[0].indexOf(dMatch[1]);
-
-                    if (posA < posB && posB < posC && posC < posD) {
-                        let qText = block.substring(0, posA)
-                            .replace(/^(?:Q\s*[:\.]?|Câu\s*\d+[\.:]?|Question\s*\d+[\.:]?|\d+[\.:])\s*/i, '')
-                            .replace(/^(?:Q|Câu|Question)\b[\s\:\.]*/i, '')
-                            .trim();
-
-                        let rawA = block.substring(posA, posB);
-                        let rawB = block.substring(posB, posC);
-                        let rawC = block.substring(posC, posD);
-                        let rawD = block.substring(posD);
-
-                        let rawOpts = [rawA, rawB, rawC, rawD];
-                        let detectedCorrectIdx = -1;
-                        let cleanOptions = [];
-
-                        rawOpts.forEach((optStr, idx) => {
-                            if (optStr.includes('*')) {
-                                detectedCorrectIdx = idx;
-                            }
-
-                            let cleaned = optStr
-                                .replace(/\*/g, '')
-                                .replace(/^[\s\u00A0\t\r\n]+/g, '')
-                                .replace(/^(?:[\(\[]?[A-Da-d][\.\)\:\-\]\s]+\s*)+/gi, '')
-                                .replace(/^[\s\u00A0\t\r\n]+/g, '')
-                                .trim();
-
-                            let prefix = String.fromCharCode(65 + idx) + ". ";
-                            cleanOptions.push(prefix + cleaned);
-                        });
-
-                        if (detectedCorrectIdx === -1 && explicitKeyIdx !== -1) {
-                            detectedCorrectIdx = explicitKeyIdx;
-                        }
-                        if (detectedCorrectIdx < 0 || detectedCorrectIdx > 3) {
-                            detectedCorrectIdx = 0;
-                        }
-
-                        if (qText && cleanOptions[0] && cleanOptions[1]) {
-                            questions.push({
-                                id: questions.length + 1,
-                                questionText: qText,
-                                options: cleanOptions,
-                                correctAnswer: detectedCorrectIdx,
-                                explanation: explanation
-                            });
-                        }
+                // 4) Tìm vị trí 4 đáp án A, B, C, D theo đúng thứ tự
+                const findMarkers = (re) => {
+                    const all = [...block.matchAll(re)];
+                    const picked = [];
+                    let from = 0;
+                    for (const letter of ['A', 'B', 'C', 'D']) {
+                        const m = all.find(x => x.index >= from && x[2].toUpperCase() === letter);
+                        if (!m) return null;
+                        picked.push(m);
+                        from = m.index + m[0].length;
                     }
+                    return picked;
+                };
+                // Ưu tiên: mỗi đáp án nằm đầu dòng (cho phép dấu * đứng trước hoặc sau chữ cái)
+                let markers = findMarkers(/(^|\n)[ \t]*(?:\*[ \t]*)?[\(\[]?([A-Da-d])[\.\)\:\]\-]/g);
+                // Dự phòng: các đáp án nằm cùng một dòng "A. xxx B. yyy C. zzz D. www" (chỉ nhận chữ HOA + dấu . hoặc ))
+                if (!markers) markers = findMarkers(/(^|\s)(?:\*[ \t]*)?[\(\[]?([A-D])[\.\)][ \t]/g);
+                if (!markers) return;
+
+                // vị trí bắt đầu thật của từng đáp án (bao gồm cả dấu * đứng trước chữ cái)
+                const pos = markers.map(m => {
+                    const full = m[0];
+                    const lead = full.length - full.replace(/^[\s]+/, '').length;
+                    return m.index + lead;
+                });
+
+                let qText = block.substring(0, pos[0])
+                    .replace(/^[ \t]*(?:(?:Câu|Question)[ \t]*\d+[ \t]*[\.\:\)]?|Q[ \t]*\d*[ \t]*[\.\:\)]|\d+[ \t]*[\.\)])[ \t]*/i, '')
+                    .replace(/\*([^*\n]+)\*/g, '$1')   // *Haemophilus influenzae* -> Haemophilus influenzae
+                    .replace(/\*/g, '')
+                    .trim();
+
+                const rawOpts = [0, 1, 2, 3].map(i => block.substring(pos[i], i < 3 ? pos[i + 1] : block.length));
+                let detectedCorrectIdx = -1;
+                const cleanOptions = [];
+
+                rawOpts.forEach((optStr, idx) => {
+                    const t = optStr.trim();
+                    // Đáp án đúng: dấu * trước chữ cái ("*C. ..."), ngay sau chữ cái ("C. *...") hoặc ở cuối dòng
+                    const isCorrect = /^\*/.test(t) || /^[\(\[]?[A-Da-d][\.\)\:\]\-][ \t]*\*/.test(t) || /\*\s*$/.test(t);
+                    if (isCorrect && detectedCorrectIdx === -1) detectedCorrectIdx = idx;
+
+                    const cleaned = t
+                        .replace(/^\*+\s*/, '')
+                        .replace(/^[\(\[]?[A-Da-d][\.\)\:\]\-][ \t]*/, '')
+                        .replace(/\*([^*\n]+)\*/g, '$1')
+                        .replace(/\*/g, '')
+                        .trim();
+                    cleanOptions.push(String.fromCharCode(65 + idx) + ". " + cleaned);
+                });
+
+                if (detectedCorrectIdx === -1 && explicitKeyIdx !== -1) detectedCorrectIdx = explicitKeyIdx;
+                if (detectedCorrectIdx < 0 || detectedCorrectIdx > 3) detectedCorrectIdx = 0;
+
+                if (qText && cleanOptions[0].length > 3 && cleanOptions[1].length > 3) {
+                    questions.push({
+                        id: questions.length + 1,
+                        questionText: qText,
+                        options: cleanOptions,
+                        correctAnswer: detectedCorrectIdx,
+                        explanation: explanation
+                    });
                 }
             });
 
