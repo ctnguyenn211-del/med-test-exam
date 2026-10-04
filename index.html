@@ -246,21 +246,24 @@
                 <button onclick="closeEditQuestionModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
             <div class="space-y-3 text-sm">
+                <p class="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                    💡 Định dạng: gõ <b>**chữ đậm**</b> để in đậm, <i>*chữ nghiêng*</i> để in nghiêng, nhấn <b>Enter</b> để xuống dòng.
+                </p>
                 <div>
                     <label class="block font-medium text-slate-700 mb-1">Nội dung câu hỏi</label>
                     <textarea id="edit-q-text" rows="3" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></textarea>
                 </div>
-                <div><label class="block font-medium text-slate-700 mb-1">Đáp án A</label><input type="text" id="edit-opt-0" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></div>
-                <div><label class="block font-medium text-slate-700 mb-1">Đáp án B</label><input type="text" id="edit-opt-1" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></div>
-                <div><label class="block font-medium text-slate-700 mb-1">Đáp án C</label><input type="text" id="edit-opt-2" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></div>
-                <div><label class="block font-medium text-slate-700 mb-1">Đáp án D</label><input type="text" id="edit-opt-3" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></div>
+                <div><label class="block font-medium text-slate-700 mb-1">Đáp án A</label><textarea id="edit-opt-0" rows="2" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></textarea></div>
+                <div><label class="block font-medium text-slate-700 mb-1">Đáp án B</label><textarea id="edit-opt-1" rows="2" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></textarea></div>
+                <div><label class="block font-medium text-slate-700 mb-1">Đáp án C</label><textarea id="edit-opt-2" rows="2" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></textarea></div>
+                <div><label class="block font-medium text-slate-700 mb-1">Đáp án D</label><textarea id="edit-opt-3" rows="2" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]"></textarea></div>
                 <div>
                     <label class="block font-medium text-slate-700 mb-1">Đáp án đúng</label>
                     <select id="edit-correct-ans" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]">
                         <option value="0">A</option><option value="1">B</option><option value="2">C</option><option value="3">D</option>
                     </select>
                 </div>
-                <div><label class="block font-medium text-slate-700 mb-1">Giải thích chi tiết</label><textarea id="edit-explanation" rows="3" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]" placeholder="Nhập giải thích cho câu hỏi này..."></textarea></div>
+                <div><label class="block font-medium text-slate-700 mb-1">Giải thích chi tiết</label><textarea id="edit-explanation" rows="5" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#D6336C]" placeholder="Nhập giải thích cho câu hỏi này..."></textarea></div>
             </div>
             <div class="flex justify-end space-x-3 pt-2 border-t">
                 <button onclick="closeEditQuestionModal()" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 text-sm font-medium">Hủy</button>
@@ -288,6 +291,10 @@
         //    app_data/vmu_v2_meta          -> danh mục: môn / chương / đề (chỉ tên, số câu, mã phiên bản)
         //    app_data/vmu_v2_ex_<idĐề>     -> nội dung câu hỏi của TỪNG đề
         //  Dữ liệu cũ (app_data/vmu_exam_pro) vẫn được đọc và tự chuyển sang cấu trúc mới khi Admin đăng nhập.
+        //
+        //  ĐỊNH DẠNG CHỮ trong câu hỏi / đáp án / giải thích:
+        //    **chữ đậm**   *chữ nghiêng*   và ký tự xuống dòng (\n)
+        //  Khi nhập từ Word, định dạng đậm/nghiêng/xuống dòng được đọc tự động và lưu theo quy ước này.
         // =====================================================================
         const ADMIN_PASSWORD = "212696";
         const COL = "app_data";
@@ -333,6 +340,25 @@
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
+
+        // Hiển thị văn bản có định dạng: **đậm**, *nghiêng*. Xuống dòng do CSS "whitespace-pre-line" đảm nhiệm.
+        // Luôn escape HTML trước nên an toàn; dấu * lẻ/thiếu cặp sẽ tự đóng ở cuối chuỗi.
+        function fmt(s) {
+            const t = esc(String(s == null ? '' : s).trim());
+            let out = '', bold = false, ital = false;
+            for (let k = 0; k < t.length; k++) {
+                if (t[k] === '*') {
+                    if (t[k + 1] === '*') { bold = !bold; out += bold ? '<b>' : '</b>'; k++; }
+                    else { ital = !ital; out += ital ? '<i>' : '</i>'; }
+                } else {
+                    out += t[k];
+                }
+            }
+            if (ital) out += '</i>';
+            if (bold) out += '</b>';
+            return out;
+        }
+
         function newId(prefix) {
             return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
         }
@@ -1077,8 +1103,9 @@
                     let questions;
                     try {
                         const arrayBuffer = await file.arrayBuffer();
-                        const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-                        questions = parseBulkQuestions(result.value);
+                        // Đọc Word dưới dạng HTML để giữ lại in đậm / in nghiêng / xuống dòng
+                        const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
+                        questions = parseBulkQuestions(htmlToMarkedText(result.value));
                     } catch (err) {
                         console.error("Lỗi đọc file:", fileName, err);
                         skipped.push(fileName + ' (lỗi đọc file)');
@@ -1189,13 +1216,89 @@
             }
         }
 
+        // =====================================================================
+        //  WORD (HTML) -> VĂN BẢN CÓ ĐÁNH DẤU ĐỊNH DẠNG
+        //  Dùng 4 ký tự riêng (private-use) làm dấu mở/đóng đậm & nghiêng khi đang bóc tách,
+        //  để không lẫn với dấu * đánh dấu đáp án đúng. Cuối cùng đổi thành **đậm** và *nghiêng*.
+        // =====================================================================
+        const BO = '\uE001', BC = '\uE002', IO = '\uE003', IC = '\uE004';
+        const TOK_CLASS = '[\\uE001-\\uE004]';
+        const BLOCK_TAGS = new Set(['P', 'LI', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'TR', 'BLOCKQUOTE']);
+
+        function htmlToMarkedText(html) {
+            const doc = new DOMParser().parseFromString(html || '', 'text/html');
+            let out = '';
+            function walk(n) {
+                if (n.nodeType === 3) { out += n.nodeValue; return; }
+                if (n.nodeType !== 1) return;
+                const t = n.tagName;
+                if (t === 'BR') { out += '\n'; return; }
+                const isB = (t === 'STRONG' || t === 'B');
+                const isI = (t === 'EM' || t === 'I');
+                if (isB) out += BO;
+                if (isI) out += IO;
+                n.childNodes.forEach(walk);
+                if (isI) out += IC;
+                if (isB) out += BC;
+                if (t === 'TD' || t === 'TH') out += ' ';
+                if (BLOCK_TAGS.has(t)) out += '\n';
+            }
+            doc.body.childNodes.forEach(walk);
+            return out.replace(/\u00a0/g, ' ').replace(/\n{2,}/g, '\n');
+        }
+
+        // Chuyển dấu định dạng tạm thành **đậm** / *nghiêng*, tự cân bằng cặp mở-đóng bị lệch
+        function tokensToMd(s) {
+            // bỏ cặp rỗng, dời khoảng trắng ra ngoài dấu để **đậm** không bị lệch
+            s = s.replace(/\uE001(\s*)\uE002/g, '$1').replace(/\uE003(\s*)\uE004/g, '$1')
+                 .replace(/([\uE001\uE003])(\s+)/g, '$2$1').replace(/(\s+)([\uE002\uE004])/g, '$2$1');
+            let out = '', b = false, i = false;
+            for (const ch of s) {
+                if (ch === BO) { if (!b) { b = true; out += '**'; } }
+                else if (ch === BC) { if (b) { b = false; out += '**'; } }
+                else if (ch === IO) { if (!i) { i = true; out += '*'; } }
+                else if (ch === IC) { if (i) { i = false; out += '*'; } }
+                else out += ch;
+            }
+            if (i) out += '*';
+            if (b) out += '**';
+            return out;
+        }
+        function stripTokens(s) { return String(s).replace(new RegExp(TOK_CLASS, 'g'), ''); }
+
+        // Hoàn thiện văn bản sau khi tách: *x* / **x** do người soạn tự gõ -> nghiêng/đậm, dấu * còn sót bị bỏ
+        function finishText(s) {
+            s = s.replace(/\*\*([^*\n]+)\*\*/g, BO + '$1' + BC)
+                 .replace(/\*([^*\n]+)\*/g, IO + '$1' + IC)
+                 .replace(/\*/g, '');
+            return tokensToMd(s).trim();
+        }
+
+        // Nếu dấu định dạng đứng trước nhãn ("Câu 1.", "A.", "Giải thích:"...) thì dời ra sau nhãn
+        // để các bước nhận diện cấu trúc phía dưới không bị vướng.
+        const LABEL_SRC = '[\\(\\[]?[A-Da-d][\\.\\)\\:\\]\\-]'
+            + '|(?:Câu|Question)[ \\t]*\\d+[ \\t]*[\\.\\:\\)]'
+            + '|Q[ \\t]*\\d*[ \\t]*[\\.\\:\\)]'
+            + '|\\d+[ \\t]*[\\.\\)]'
+            + '|(?:Giải[ \\t]*thích|Lời[ \\t]*giải|Explanation|Exp|Đáp[ \\t]*án(?:[ \\t]*đúng)?|Answer|Key|Ans|ĐA)[ \\t]*[\\.\\:\\-]?';
+        const LEAD_RE = new RegExp(
+            '^([ \\t]*)((?:' + TOK_CLASS + '[ \\t]*)*)(\\*?)[ \\t]*((?:' + TOK_CLASS + '[ \\t]*)*)(' + LABEL_SRC + ')', 'i');
+
+        function moveLeadTokens(line) {
+            return line.replace(LEAD_RE, (m, ws, t1, star, t2, label) => {
+                if (!t1 && !t2) return m;
+                return ws + star + label + t1 + t2;
+            });
+        }
+
         // BỘ BÓC TÁCH CÂU HỎI THÔNG MINH
         // Quy ước: mỗi câu bắt đầu bằng "Câu N." ; các đáp án A. B. C. D. (đáp án đúng có dấu * ở đầu);
         // phần "Giải thích." (nếu có) nằm cuối câu.
         function parseBulkQuestions(text) {
             if (!text) return [];
 
-            const rawText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/ /g, ' ');
+            let rawText = text.normalize('NFC').replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\u00a0/g, ' ');
+            rawText = rawText.split('\n').map(moveLeadTokens).join('\n');
 
             // 1) Tách thành từng khối câu hỏi. Chỉ nhận dòng tiêu đề đứng ĐẦU DÒNG (tránh cắt nhầm giữa câu).
             const headerRe = /^[ \t]*(?:(?:Câu|Question)[ \t]*\d+[ \t]*[\.\:\)]|Q[ \t]*\d*[ \t]*[\.\:\)])/gim;
@@ -1214,7 +1317,7 @@
                 // 2) Tách phần giải thích (phải là từ khóa "Giải thích."/"Explanation:" thật sự, không phải chữ "e" bất kỳ)
                 let explanation = "";
                 const expCands = [
-                    block.match(/(?:^|\s)(?:Giải\s*thích|Lời\s*giải|Explanation)[ \t]*[\.\:][ \t]*/i),
+                    block.match(/(?:^|[\s\uE001-\uE004])(?:Giải[\s\uE001-\uE004]*thích|Lời[\s\uE001-\uE004]*giải|Explanation)[ \t\uE001-\uE004]*[\.\:\-–][ \t]*/i),
                     block.match(/(?:^|\n)[ \t]*Exp[ \t]*[\.\:][ \t]*/i)
                 ].filter(Boolean);
                 if (expCands.length) {
@@ -1223,12 +1326,13 @@
                     block = block.substring(0, em.index).trim();
                 }
                 // bỏ dòng gạch phân cách "---" còn sót
-                explanation = explanation.replace(/(?:\n\s*)?-{3,}\s*$/, '').replace(/\*([^*\n]+)\*/g, '$1').trim();
+                explanation = explanation.replace(/(?:\n\s*)?-{3,}\s*$/, '');
+                explanation = finishText(explanation);
                 block = block.replace(/(?:\n\s*)?-{3,}\s*$/, '').trim();
 
                 // 3) Đáp án khai báo riêng (nếu có): "Đáp án: B" - phải nằm ở đầu dòng
                 let explicitKeyIdx = -1;
-                const keyMatch = block.match(/(?:^|\n)[ \t]*(?:Đáp\s*án(?:\s*đúng)?|Answer|Key|Ans|ĐA)[ \t]*[.:-]?[ \t]*([A-D])(?![\p{L}\d])/iu);
+                const keyMatch = block.match(/(?:^|\n)[ \t]*(?:Đáp\s*án(?:\s*đúng)?|Answer|Key|Ans|ĐA)[ \t]*[.:-]?[ \t]*[\uE001-\uE004]*[ \t]*([A-D])(?![\p{L}\d])/iu);
                 if (keyMatch) {
                     explicitKeyIdx = keyMatch[1].toUpperCase().charCodeAt(0) - 65;
                     block = block.substring(0, keyMatch.index).trim();
@@ -1261,10 +1365,8 @@
                 });
 
                 let qText = block.substring(0, pos[0])
-                    .replace(/^[ \t]*(?:(?:Câu|Question)[ \t]*\d+[ \t]*[\.\:\)]?|Q[ \t]*\d*[ \t]*[\.\:\)]|\d+[ \t]*[\.\)])[ \t]*/i, '')
-                    .replace(/\*([^*\n]+)\*/g, '$1')   // *Haemophilus influenzae* -> Haemophilus influenzae
-                    .replace(/\*/g, '')
-                    .trim();
+                    .replace(/^[ \t]*(?:(?:Câu|Question)[ \t]*\d+[ \t]*[\.\:\)]?|Q[ \t]*\d*[ \t]*[\.\:\)]|\d+[ \t]*[\.\)])[ \t]*/i, '');
+                qText = finishText(qText);
 
                 const rawOpts = [0, 1, 2, 3].map(i => block.substring(pos[i], i < 3 ? pos[i + 1] : block.length));
                 let detectedCorrectIdx = -1;
@@ -1272,16 +1374,17 @@
 
                 rawOpts.forEach((optStr, idx) => {
                     const t = optStr.trim();
+                    const tp = stripTokens(t);   // bản không có dấu định dạng, dùng để nhận diện dấu * đáp án đúng
                     // Đáp án đúng: dấu * trước chữ cái ("*C. ..."), ngay sau chữ cái ("C. *...") hoặc ở cuối dòng
-                    const isCorrect = /^\*/.test(t) || /^[\(\[]?[A-Da-d][\.\)\:\]\-][ \t]*\*/.test(t) || /\*\s*$/.test(t);
+                    const isCorrect = /^\*/.test(tp) || /^[\(\[]?[A-Da-d][\.\)\:\]\-][ \t]*\*/.test(tp) || /\*\s*$/.test(tp);
                     if (isCorrect && detectedCorrectIdx === -1) detectedCorrectIdx = idx;
 
-                    const cleaned = t
+                    let cleaned = t
                         .replace(/^\*+\s*/, '')
                         .replace(/^[\(\[]?[A-Da-d][\.\)\:\]\-][ \t]*/, '')
-                        .replace(/\*([^*\n]+)\*/g, '$1')
-                        .replace(/\*/g, '')
-                        .trim();
+                        // bỏ dấu * đáp án đúng đứng ngay sau nhãn (giữ nguyên các dấu đậm/nghiêng)
+                        .replace(/^((?:[\uE001-\uE004]|[ \t])*)\*+[ \t]*/, '$1');
+                    cleaned = finishText(cleaned);
                     cleanOptions.push(String.fromCharCode(65 + idx) + ". " + cleaned);
                 });
 
@@ -1365,7 +1468,7 @@
                         ${unsureQuestions[currentQuestionIndex] ? '<span class="bg-[#FF4081] text-white text-xs px-2.5 py-1 rounded-full font-bold">Phân vân</span>' : ''}
                     </div>
                 </div>
-                <h4 class="text-slate-900 font-bold text-lg leading-relaxed">${esc(q.questionText)}</h4>
+                <h4 class="text-slate-900 font-semibold text-lg leading-relaxed whitespace-pre-line">${fmt(q.questionText)}</h4>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
             `;
 
@@ -1378,7 +1481,7 @@
                         else if (idx === selectedAns) { btnStyle = "bg-rose-50 border-rose-500 text-rose-900 font-medium"; iconHtml = '<i class="fa-solid fa-circle-xmark text-rose-600 ml-auto"></i>'; }
                     } else if (idx === selectedAns) { btnStyle = "bg-[#FFF5F8] border-[#D6336C] text-[#D6336C] font-medium"; }
                 }
-                html += `<button onclick="selectAnswer(${idx})" class="w-full text-left p-3.5 rounded-xl border-2 transition flex items-center justify-between text-sm md:text-base ${btnStyle}"><span>${String.fromCharCode(65 + idx)}. ${esc(optText(opt))}</span>${iconHtml}</button>`;
+                html += `<button onclick="selectAnswer(${idx})" class="w-full text-left p-3.5 rounded-xl border-2 transition flex items-center justify-between text-sm md:text-base ${btnStyle}"><span class="whitespace-pre-line">${String.fromCharCode(65 + idx)}. ${fmt(optText(opt))}</span>${iconHtml}</button>`;
             });
             html += `</div>`;
 
@@ -1386,7 +1489,7 @@
                 html += `
                     <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 text-sm space-y-1">
                         <span class="font-bold text-slate-900 block"><i class="fa-solid fa-circle-info text-blue-600 mr-1"></i> Giải thích chi tiết:</span>
-                        <p class="text-slate-600">${esc(q.explanation)}</p>
+                        <p class="text-slate-600 whitespace-pre-line leading-relaxed">${fmt(q.explanation)}</p>
                     </div>
                 `;
             }
@@ -1551,10 +1654,10 @@
             document.getElementById('btn-review-mistakes').classList.remove('hidden');
             let html = '';
             userMistakes.forEach((m, idx) => {
-                html += `<div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3"><div class="flex justify-between items-start"><span class="bg-[#FFF5F8] text-[#D6336C] font-semibold px-3 py-1 rounded-lg text-xs border border-[#FFB6C1]">Câu sai #${idx + 1}</span><button onclick="removeMistake(${idx})" class="text-slate-400 hover:text-[#D6336C] text-xs">Đã thuộc (Xóa)</button></div><h4 class="font-bold text-slate-900 text-sm">${esc(m.questionText)}</h4><div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">`;
+                html += `<div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3"><div class="flex justify-between items-start"><span class="bg-[#FFF5F8] text-[#D6336C] font-semibold px-3 py-1 rounded-lg text-xs border border-[#FFB6C1]">Câu sai #${idx + 1}</span><button onclick="removeMistake(${idx})" class="text-slate-400 hover:text-[#D6336C] text-xs">Đã thuộc (Xóa)</button></div><h4 class="font-semibold text-slate-900 text-sm whitespace-pre-line">${fmt(m.questionText)}</h4><div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">`;
                 m.options.forEach((opt, oIdx) => {
                     let isRight = oIdx === m.correctAnswer;
-                    html += `<div class="p-2.5 rounded-xl border ${isRight ? "bg-emerald-50 border-emerald-500 text-emerald-900 font-medium" : "bg-slate-50 border-slate-200 text-slate-600"}">${String.fromCharCode(65 + oIdx)}. ${esc(optText(opt))}</div>`;
+                    html += `<div class="p-2.5 rounded-xl border whitespace-pre-line ${isRight ? "bg-emerald-50 border-emerald-500 text-emerald-900 font-medium" : "bg-slate-50 border-slate-200 text-slate-600"}">${String.fromCharCode(65 + oIdx)}. ${fmt(optText(opt))}</div>`;
                 });
                 html += `</div></div>`;
             });
