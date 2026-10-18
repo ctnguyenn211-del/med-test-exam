@@ -1447,16 +1447,7 @@
                 document.getElementById('exam-title-header').innerText = currentExam.title;
                 document.getElementById('exam-badge-subject').innerText = loc.s.name;
 
-                activeQuestions = JSON.parse(JSON.stringify(currentExam.questions));
-                if (settings.shuffleQ) activeQuestions.sort(() => Math.random() - 0.5);
-                if (settings.shuffleA) {
-                    activeQuestions.forEach(q => {
-                        let pairs = q.options.map((opt, idx) => ({ opt, isCorrect: idx === q.correctAnswer }));
-                        pairs.sort(() => Math.random() - 0.5);
-                        q.options = pairs.map(p => p.opt);
-                        q.correctAnswer = pairs.findIndex(p => p.isCorrect);
-                    });
-                }
+activeQuestions = buildActiveQuestions(currentExam.questions);
 
                 currentQuestionIndex = 0;
                 userAnswers = {};
@@ -1649,11 +1640,54 @@
             document.getElementById('stat-correct').innerText = correct;
             document.getElementById('stat-score').innerText = score.toFixed(2);
         }
+function shuffleArray(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
 
+// Đáp án kiểu "cả A và B", "tất cả đáp án trên"... thì không đảo câu đó
+const NO_SHUFFLE_RE = /(tất cả (các )?(đáp án|ý|câu)|(các )?(đáp án|ý) (trên|còn lại)|cả\s*[A-D]\b|\b[A-D]\s*(và|,)\s*[A-D]\b|không có đáp án)/i;
+
+function buildActiveQuestions(source) {
+    const list = JSON.parse(JSON.stringify(source));
+    if (settings.shuffleQ) shuffleArray(list);
+    if (settings.shuffleA) {
+        list.forEach(q => {
+            if (q.options.some(o => NO_SHUFFLE_RE.test(optText(o)))) return;
+            const pairs = q.options.map((o, i) => ({ text: optText(o), ok: i === q.correctAnswer }));
+            shuffleArray(pairs);
+            q.options = pairs.map((p, i) => String.fromCharCode(65 + i) + '. ' + p.text);
+            q.correctAnswer = pairs.findIndex(p => p.ok);
+        });
+    }
+    return list;
+}
+
+// Đảo ngay khi đang ở trang làm bài. Trả về false nếu người dùng bấm Hủy.
+function reshuffleNow() {
+    if (!currentExam || document.getElementById('tab-exam').classList.contains('hidden')) return;
+    if (Object.keys(userAnswers).length > 0 &&
+        !confirm('Đổi chế độ đảo sẽ làm lại bài từ đầu (xóa các câu đã chọn). Tiếp tục?')) return false;
+    activeQuestions = buildActiveQuestions(currentExam.questions);
+    currentQuestionIndex = 0; userAnswers = {}; unsureQuestions = {};
+    renderQuestion(); renderPalette(); updateStats();
+    return true;
+}
         function toggleSettingShowAnswer(el) { settings.showAnswer = el.checked; renderQuestion(); }
         function toggleSettingAutoNext(el) { settings.autoNext = el.checked; }
-        function toggleShuffleQuestions(el) { settings.shuffleQ = el.checked; }
-        function toggleShuffleAnswers(el) { settings.shuffleA = el.checked; }
+function toggleShuffleQuestions(el) {
+    const prev = settings.shuffleQ;
+    settings.shuffleQ = el.checked;
+    if (reshuffleNow() === false) { settings.shuffleQ = prev; el.checked = prev; }
+}
+function toggleShuffleAnswers(el) {
+    const prev = settings.shuffleA;
+    settings.shuffleA = el.checked;
+    if (reshuffleNow() === false) { settings.shuffleA = prev; el.checked = prev; }
+}
 
         // =====================================================================
         //  ÔN CÂU SAI
@@ -1699,7 +1733,7 @@
             currentExam = { title: "Ôn tập câu sai", questions: JSON.parse(JSON.stringify(userMistakes)) };
             document.getElementById('exam-title-header').innerText = currentExam.title;
             document.getElementById('exam-badge-subject').innerText = "Sổ tay câu sai";
-            activeQuestions = JSON.parse(JSON.stringify(currentExam.questions));
+activeQuestions = buildActiveQuestions(currentExam.questions);
             currentQuestionIndex = 0; userAnswers = {}; unsureQuestions = {};
             switchTab('exam');
             renderQuestion(); renderPalette(); updateStats();
