@@ -456,6 +456,7 @@
                 isAdmin = localStorage.getItem("vmu_is_admin") === "true";
                 updateNavbarState();
                 loadMistakes();
+                loadSettings();
                 loadCachedMeta();
                 renderHome();
                 if (!window.fb) setSyncStatus('offline');
@@ -1447,7 +1448,8 @@
         //   Dạng 2: cụm từ: "Tất cả các đáp án trên", "Các ý trên đều đúng", "Không có đáp án nào đúng"...
         // (Bản cũ dùng \b + cờ i nên "thuốc và bệnh", "cả cơ"... bị nhận nhầm và câu đó không bao giờ được đảo.)
         const REF_LETTERS_RE = /^(?:cả\s+)?[A-D](?:\s*(?:,\s*và|,|và|&|hoặc)\s*[A-D])+(?:\s+đều)?(?:\s+(?:đúng|sai))?\s*[.;]?$/iu;
-        const REF_WORDS_RE = /(tất\s*cả\s*(?:các\s*)?(?:đáp\s*án|ý|câu|phương\s*án)|cả\s+(?:hai|ba|bốn|\d)\s+(?:đáp\s*án|ý|câu|phương\s*án)|(?:các\s*)?(?:đáp\s*án|ý|câu)\s+(?:trên|còn\s*lại)|không\s*có\s*(?:đáp\s*án|ý|câu)\s*nào)/iu;
+        // (?:^|[^\p{L}\p{N}]) = ranh giới từ cho tiếng Việt (không dùng \b), tránh nhận nhầm "quý trên", "cầu trên"...
+        const REF_WORDS_RE = /(?:^|[^\p{L}\p{N}])(?:tất\s*cả\s*(?:các\s*)?(?:đáp\s*án|ý|câu|phương\s*án)|cả\s+(?:hai|ba|bốn|\d)\s+(?:đáp\s*án|ý|câu|phương\s*án)|(?:các\s*)?(?:đáp\s*án|ý|câu)\s+(?:trên|còn\s*lại)|không\s*có\s*(?:đáp\s*án|ý|câu)\s*nào)/iu;
 
         function isPositionalOption(text) {
             const t = stripTokens(String(text == null ? '' : text)).replace(/\*/g, '').trim();
@@ -1477,6 +1479,7 @@
         }
 
         function buildActiveQuestions(source) {
+            readSettingsFromUI();   // luôn lấy đúng trạng thái công tắc đang hiện trên màn hình
             const list = source.map((q, i) => makeActive(q, i));
             if (settings.shuffleQ) shuffleArray(list);
             return list;
@@ -1570,6 +1573,7 @@
                     </div>
                 </div>
                 <h4 class="text-slate-900 font-semibold text-lg leading-relaxed whitespace-pre-line">${fmt(q.questionText)}</h4>
+                ${(settings.shuffleA && !Array.isArray(q._perm) && Array.isArray(q.options) && q.options.some(o => isPositionalOption(optText(o)))) ? '<p class="text-xs text-slate-400 -mt-3"><i class="fa-solid fa-lock mr-1"></i>Câu này giữ nguyên thứ tự đáp án vì có đáp án dạng "Cả A và B" / "Tất cả các ý trên".</p>' : ''}
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
             `;
 
@@ -1756,10 +1760,44 @@
             document.getElementById('stat-score').innerText = score.toFixed(2);
         }
 
-        function toggleSettingShowAnswer(el) { settings.showAnswer = el.checked; renderQuestion(); }
-        function toggleSettingAutoNext(el) { settings.autoNext = el.checked; }
-        function toggleShuffleQuestions(el) { settings.shuffleQ = el.checked; reshuffleNow(); }
-        function toggleShuffleAnswers(el) { settings.shuffleA = el.checked; reshuffleNow(); }
+        // ----- Cài đặt: lưu vào localStorage + luôn đồng bộ với ô tick trên giao diện -----
+        // (Trình duyệt như Firefox / nút Back / Reload có thể tự khôi phục trạng thái ô tick trong khi biến JS về mặc định,
+        //  khiến công tắc hiện BẬT nhưng thực tế đang TẮT -> trông như "đảo không hoạt động".)
+        const SETTING_IDS = {
+            showAnswer: 'setting-show-answer',
+            autoNext: 'setting-auto-next',
+            shuffleQ: 'setting-shuffle-q',
+            shuffleA: 'setting-shuffle-a'
+        };
+        function saveSettings() {
+            try { localStorage.setItem('vmu_settings', JSON.stringify(settings)); } catch (e) {}
+        }
+        function syncSettingsToUI() {
+            Object.keys(SETTING_IDS).forEach(k => {
+                const el = document.getElementById(SETTING_IDS[k]);
+                if (el) el.checked = !!settings[k];
+            });
+        }
+        function readSettingsFromUI() {
+            Object.keys(SETTING_IDS).forEach(k => {
+                const el = document.getElementById(SETTING_IDS[k]);
+                if (el) settings[k] = !!el.checked;
+            });
+        }
+        function loadSettings() {
+            try {
+                const saved = JSON.parse(localStorage.getItem('vmu_settings') || 'null');
+                if (saved && typeof saved === 'object') {
+                    Object.keys(SETTING_IDS).forEach(k => { if (typeof saved[k] === 'boolean') settings[k] = saved[k]; });
+                }
+            } catch (e) {}
+            syncSettingsToUI();
+        }
+
+        function toggleSettingShowAnswer(el) { settings.showAnswer = el.checked; saveSettings(); renderQuestion(); }
+        function toggleSettingAutoNext(el) { settings.autoNext = el.checked; saveSettings(); }
+        function toggleShuffleQuestions(el) { settings.shuffleQ = el.checked; saveSettings(); reshuffleNow(); }
+        function toggleShuffleAnswers(el) { settings.shuffleA = el.checked; saveSettings(); reshuffleNow(); }
 
         // =====================================================================
         //  ÔN CÂU SAI
