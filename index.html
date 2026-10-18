@@ -1428,6 +1428,94 @@
         }
 
         // =====================================================================
+        //  ĐẢO CÂU HỎI / ĐẢO ĐÁP ÁN
+        //  - Mỗi câu trong activeQuestions có:
+        //      _src  : vị trí của câu trong đề gốc (currentExam.questions)
+        //      _perm : (chỉ khi đã đảo đáp án) vị trí đáp án hiện tại -> vị trí đáp án gốc
+        //  - Bật/tắt đảo giữa chừng: các câu ĐÃ LÀM giữ nguyên, chỉ xếp lại các câu CHƯA LÀM.
+        // =====================================================================
+        function shuffleArray(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        // Đáp án "tham chiếu" các đáp án khác -> không được đảo câu đó, vì đảo sẽ làm sai nghĩa.
+        //   Dạng 1: cả nội dung đáp án chỉ là các chữ cái: "A và B", "Cả A, B và C", "A, B đều đúng"
+        //   Dạng 2: cụm từ: "Tất cả các đáp án trên", "Các ý trên đều đúng", "Không có đáp án nào đúng"...
+        // (Bản cũ dùng \b + cờ i nên "thuốc và bệnh", "cả cơ"... bị nhận nhầm và câu đó không bao giờ được đảo.)
+        const REF_LETTERS_RE = /^(?:cả\s+)?[A-D](?:\s*(?:,\s*và|,|và|&|hoặc)\s*[A-D])+(?:\s+đều)?(?:\s+(?:đúng|sai))?\s*[.;]?$/iu;
+        const REF_WORDS_RE = /(tất\s*cả\s*(?:các\s*)?(?:đáp\s*án|ý|câu|phương\s*án)|cả\s+(?:hai|ba|bốn|\d)\s+(?:đáp\s*án|ý|câu|phương\s*án)|(?:các\s*)?(?:đáp\s*án|ý|câu)\s+(?:trên|còn\s*lại)|không\s*có\s*(?:đáp\s*án|ý|câu)\s*nào)/iu;
+
+        function isPositionalOption(text) {
+            const t = stripTokens(String(text == null ? '' : text)).replace(/\*/g, '').trim();
+            return REF_LETTERS_RE.test(t) || REF_WORDS_RE.test(t);
+        }
+
+        function shuffleOptions(q) {
+            if (!Array.isArray(q.options) || q.options.length < 2) return q;
+            const ca = q.correctAnswer;
+            if (!(ca >= 0 && ca < q.options.length)) return q;
+            if (q.options.some(o => isPositionalOption(optText(o)))) return q;
+            const pairs = q.options.map((o, i) => ({ text: optText(o), ok: i === ca, from: i }));
+            shuffleArray(pairs);
+            q.options = pairs.map((p, i) => String.fromCharCode(65 + i) + '. ' + p.text);
+            q.correctAnswer = pairs.findIndex(p => p.ok);
+            q._perm = pairs.map(p => p.from);
+            return q;
+        }
+
+        // Tạo bản làm bài của 1 câu từ đề gốc (áp dụng đảo đáp án nếu đang bật)
+        function makeActive(srcQ, srcIdx) {
+            const q = JSON.parse(JSON.stringify(srcQ));
+            delete q._perm;
+            q._src = srcIdx;
+            if (settings.shuffleA) shuffleOptions(q);
+            return q;
+        }
+
+        function buildActiveQuestions(source) {
+            const list = source.map((q, i) => makeActive(q, i));
+            if (settings.shuffleQ) shuffleArray(list);
+            return list;
+        }
+
+        // Áp dụng cài đặt đảo ngay khi đang làm bài mà KHÔNG mất tiến độ:
+        // câu đã làm giữ nguyên vị trí + thứ tự đáp án; câu chưa làm được xếp lại theo cài đặt mới.
+        function reshuffleNow() {
+            if (!currentExam || document.getElementById('tab-exam').classList.contains('hidden')) return;
+            const src = currentExam.questions;
+            const oldList = activeQuestions;
+
+            const unsureBySrc = {};
+            oldList.forEach((q, i) => { if (unsureQuestions[i]) unsureBySrc[q._src] = true; });
+
+            const freeSlots = [];
+            const freeQs = [];
+            const newList = oldList.slice();
+            oldList.forEach((q, i) => {
+                if (userAnswers[i] === undefined && src[q._src]) {
+                    freeSlots.push(i);
+                    freeQs.push(makeActive(src[q._src], q._src));
+                }
+            });
+            if (settings.shuffleQ) shuffleArray(freeQs);
+            else freeQs.sort((a, b) => a._src - b._src);
+            freeSlots.forEach((slot, k) => { newList[slot] = freeQs[k]; });
+
+            activeQuestions = newList;
+            unsureQuestions = {};
+            newList.forEach((q, i) => { if (unsureBySrc[q._src]) unsureQuestions[i] = true; });
+
+            renderQuestion();
+            renderPalette();
+            updateStats();
+            toast('Đã áp dụng cho các câu chưa làm (câu đã làm giữ nguyên).');
+        }
+
+        // =====================================================================
         //  LÀM BÀI
         // =====================================================================
         async function startExam(sId, cId, eId) {
@@ -1447,7 +1535,7 @@
                 document.getElementById('exam-title-header').innerText = currentExam.title;
                 document.getElementById('exam-badge-subject').innerText = loc.s.name;
 
-activeQuestions = buildActiveQuestions(currentExam.questions);
+                activeQuestions = buildActiveQuestions(currentExam.questions);
 
                 currentQuestionIndex = 0;
                 userAnswers = {};
@@ -1540,7 +1628,20 @@ activeQuestions = buildActiveQuestions(currentExam.questions);
             if (!text) return alert('Nội dung câu hỏi không được để trống!');
             if (opts.some(o => !o)) return alert('Vui lòng nhập đủ 4 đáp án A, B, C, D!');
 
-            const newOptions = opts.map((o, i) => String.fromCharCode(65 + i) + '. ' + o);
+            // Thứ tự đang HIỂN THỊ (có thể đã bị đảo)
+            const shownOptions = opts.map((o, i) => String.fromCharCode(65 + i) + '. ' + o);
+
+            // Thứ tự GỐC để lưu lên máy chủ: nếu câu đang bị đảo đáp án thì đưa về đúng vị trí gốc,
+            // tránh việc lưu làm đổi vĩnh viễn thứ tự đáp án của đề.
+            let storedOptions = shownOptions;
+            let storedCorrect = correct;
+            if (Array.isArray(q._perm) && q._perm.length === 4) {
+                const arr = new Array(4);
+                q._perm.forEach((from, shownIdx) => { arr[from] = opts[shownIdx]; });
+                storedOptions = arr.map((o, i) => String.fromCharCode(65 + i) + '. ' + o);
+                storedCorrect = q._perm[correct];
+            }
+
             const { sId, cId, eId } = currentExamRef;
             if (!findExam(sId, cId, eId)) return alert('Bài học này không còn tồn tại (có thể đã bị xóa từ máy khác).');
 
@@ -1557,8 +1658,8 @@ activeQuestions = buildActiveQuestions(currentExam.questions);
                 if (!target) throw new Error('Không tìm thấy câu hỏi này trong đề (đề có thể vừa được cập nhật từ máy khác). Hãy thoát ra và vào lại đề.');
 
                 target.questionText = text;
-                target.options = newOptions;
-                target.correctAnswer = correct;
+                target.options = storedOptions;
+                target.correctAnswer = storedCorrect;
                 target.explanation = explanation;
 
                 const bytes = new Blob([JSON.stringify(questions)]).size;
@@ -1574,14 +1675,27 @@ activeQuestions = buildActiveQuestions(currentExam.questions);
                 });
                 examCache[eId] = { rev: rev, questions: questions };
 
+                // Cập nhật đề gốc đang giữ trong bộ nhớ để lần đảo sau không "quay về" nội dung cũ
+                const srcQ = (currentExam.questions[q._src] && currentExam.questions[q._src].id === q.id)
+                    ? currentExam.questions[q._src]
+                    : currentExam.questions.find(item => item.id === q.id);
+                if (srcQ) {
+                    srcQ.questionText = text;
+                    srcQ.options = storedOptions.slice();
+                    srcQ.correctAnswer = storedCorrect;
+                    srcQ.explanation = explanation;
+                }
+
+                // Câu đang hiển thị giữ nguyên thứ tự đã đảo
                 q.questionText = text;
-                q.options = newOptions;
+                q.options = shownOptions;
                 q.correctAnswer = correct;
                 q.explanation = explanation;
 
                 closeEditQuestionModal();
                 renderQuestion();
                 renderPalette();
+                updateStats();
                 toast('Đã cập nhật câu hỏi thành công!');
             } catch (e) {
                 alert('Lưu câu hỏi thất bại: ' + explainError(e));
@@ -1597,7 +1711,8 @@ activeQuestions = buildActiveQuestions(currentExam.questions);
 
             if (optIdx !== q.correctAnswer) {
                 if (!userMistakes.some(m => m.questionText === q.questionText)) {
-                    userMistakes.push({ ...q, dateAdded: new Date().toISOString() });
+                    const { _src, _perm, ...clean } = q;   // không lưu thông tin nội bộ của việc đảo
+                    userMistakes.push({ ...clean, dateAdded: new Date().toISOString() });
                     saveMistakes();
                 }
             }
@@ -1634,60 +1749,17 @@ activeQuestions = buildActiveQuestions(currentExam.questions);
         function updateStats() {
             let completed = Object.keys(userAnswers).length;
             let correct = 0;
-            Object.keys(userAnswers).forEach(idx => { if (userAnswers[idx] === activeQuestions[idx].correctAnswer) correct++; });
+            Object.keys(userAnswers).forEach(idx => { if (activeQuestions[idx] && userAnswers[idx] === activeQuestions[idx].correctAnswer) correct++; });
             let score = activeQuestions.length > 0 ? (correct / activeQuestions.length) * 10 : 0;
             document.getElementById('stat-completed').innerText = `${completed}/${activeQuestions.length}`;
             document.getElementById('stat-correct').innerText = correct;
             document.getElementById('stat-score').innerText = score.toFixed(2);
         }
-function shuffleArray(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
-}
 
-// Đáp án kiểu "cả A và B", "tất cả đáp án trên"... thì không đảo câu đó
-const NO_SHUFFLE_RE = /(tất cả (các )?(đáp án|ý|câu)|(các )?(đáp án|ý) (trên|còn lại)|cả\s*[A-D]\b|\b[A-D]\s*(và|,)\s*[A-D]\b|không có đáp án)/i;
-
-function buildActiveQuestions(source) {
-    const list = JSON.parse(JSON.stringify(source));
-    if (settings.shuffleQ) shuffleArray(list);
-    if (settings.shuffleA) {
-        list.forEach(q => {
-            if (q.options.some(o => NO_SHUFFLE_RE.test(optText(o)))) return;
-            const pairs = q.options.map((o, i) => ({ text: optText(o), ok: i === q.correctAnswer }));
-            shuffleArray(pairs);
-            q.options = pairs.map((p, i) => String.fromCharCode(65 + i) + '. ' + p.text);
-            q.correctAnswer = pairs.findIndex(p => p.ok);
-        });
-    }
-    return list;
-}
-
-// Đảo ngay khi đang ở trang làm bài. Trả về false nếu người dùng bấm Hủy.
-function reshuffleNow() {
-    if (!currentExam || document.getElementById('tab-exam').classList.contains('hidden')) return;
-    if (Object.keys(userAnswers).length > 0 &&
-        !confirm('Đổi chế độ đảo sẽ làm lại bài từ đầu (xóa các câu đã chọn). Tiếp tục?')) return false;
-    activeQuestions = buildActiveQuestions(currentExam.questions);
-    currentQuestionIndex = 0; userAnswers = {}; unsureQuestions = {};
-    renderQuestion(); renderPalette(); updateStats();
-    return true;
-}
         function toggleSettingShowAnswer(el) { settings.showAnswer = el.checked; renderQuestion(); }
         function toggleSettingAutoNext(el) { settings.autoNext = el.checked; }
-function toggleShuffleQuestions(el) {
-    const prev = settings.shuffleQ;
-    settings.shuffleQ = el.checked;
-    if (reshuffleNow() === false) { settings.shuffleQ = prev; el.checked = prev; }
-}
-function toggleShuffleAnswers(el) {
-    const prev = settings.shuffleA;
-    settings.shuffleA = el.checked;
-    if (reshuffleNow() === false) { settings.shuffleA = prev; el.checked = prev; }
-}
+        function toggleShuffleQuestions(el) { settings.shuffleQ = el.checked; reshuffleNow(); }
+        function toggleShuffleAnswers(el) { settings.shuffleA = el.checked; reshuffleNow(); }
 
         // =====================================================================
         //  ÔN CÂU SAI
@@ -1733,7 +1805,7 @@ function toggleShuffleAnswers(el) {
             currentExam = { title: "Ôn tập câu sai", questions: JSON.parse(JSON.stringify(userMistakes)) };
             document.getElementById('exam-title-header').innerText = currentExam.title;
             document.getElementById('exam-badge-subject').innerText = "Sổ tay câu sai";
-activeQuestions = buildActiveQuestions(currentExam.questions);
+            activeQuestions = buildActiveQuestions(currentExam.questions);
             currentQuestionIndex = 0; userAnswers = {}; unsureQuestions = {};
             switchTab('exam');
             renderQuestion(); renderPalette(); updateStats();
