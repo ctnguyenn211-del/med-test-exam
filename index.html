@@ -165,11 +165,14 @@
 
         <!-- TAB 3: ÔN TẬP CÂU SAI -->
         <div id="tab-mistakes" class="hidden space-y-6">
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center">
-                <div><h2 class="text-2xl font-bold text-slate-900">Sổ Tay Ôn Tập Câu Sai</h2><p class="text-sm text-slate-500">Lưu trữ các câu làm sai trên thiết bị này.</p></div>
-                <button onclick="startMistakeReview()" id="btn-review-mistakes" class="bg-[#D6336C] hover:bg-[#FF4081] text-white px-5 py-2.5 rounded-xl font-medium text-sm transition shadow-sm flex items-center"><i class="fa-solid fa-rotate-right mr-2"></i> Luyện tập lại câu sai</button>
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap justify-between items-center gap-3">
+                <div><h2 class="text-2xl font-bold text-slate-900">Sổ Tay Ôn Tập Câu Sai</h2><p class="text-sm text-slate-500">Lưu trữ các câu làm sai trên thiết bị này, gộp theo môn / chương / bài.</p></div>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="startMistakeReview()" id="btn-review-mistakes" class="bg-[#D6336C] hover:bg-[#FF4081] text-white px-5 py-2.5 rounded-xl font-medium text-sm transition shadow-sm flex items-center"><i class="fa-solid fa-rotate-right mr-2"></i> Luyện lại tất cả</button>
+                    <button onclick="deleteAllMistakes()" id="btn-delete-all-mistakes" class="bg-white hover:bg-rose-50 text-rose-600 border border-rose-300 px-5 py-2.5 rounded-xl font-medium text-sm transition flex items-center"><i class="fa-solid fa-trash mr-2"></i> Xóa toàn bộ câu sai</button>
+                </div>
             </div>
-            <div id="mistakes-container" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+            <div id="mistakes-container" class="space-y-6"></div>
         </div>
     </main>
 
@@ -1716,7 +1719,13 @@
             if (optIdx !== q.correctAnswer) {
                 if (!userMistakes.some(m => m.questionText === q.questionText)) {
                     const { _src, _perm, ...clean } = q;   // không lưu thông tin nội bộ của việc đảo
-                    userMistakes.push({ ...clean, dateAdded: new Date().toISOString() });
+                    // Ghi nhớ nguồn (môn / chương / bài) để gộp nhóm trong sổ tay câu sai
+                    let srcInfo = {};
+                    if (examMode === 'exam' && currentExamRef) {
+                        const loc = findExam(currentExamRef.sId, currentExamRef.cId, currentExamRef.eId);
+                        if (loc) srcInfo = { srcSubject: loc.s.name, srcChapter: loc.c.chapterName, srcExam: loc.e.title };
+                    }
+                    userMistakes.push({ ...clean, ...srcInfo, dateAdded: new Date().toISOString() });
                     saveMistakes();
                 }
             }
@@ -1800,8 +1809,10 @@
         function toggleShuffleAnswers(el) { settings.shuffleA = el.checked; saveSettings(); reshuffleNow(); }
 
         // =====================================================================
-        //  ÔN CÂU SAI
+        //  ÔN CÂU SAI (gộp nhóm theo môn › chương › bài)
         // =====================================================================
+        let mistakeGroups = [];
+
         function updateMistakeBadge() {
             const badge = document.getElementById('badge-mistakes');
             if (userMistakes.length > 0) {
@@ -1810,20 +1821,85 @@
             } else { badge.classList.add('hidden'); }
         }
 
+        function buildMistakeGroups() {
+            const map = new Map();
+            userMistakes.forEach((m, idx) => {
+                const subject = m.srcSubject || 'Chưa phân loại';
+                const chapter = m.srcChapter || '';
+                const exam = m.srcExam || 'Câu sai cũ (chưa rõ bài)';
+                const key = subject + '||' + chapter;
+                if (!map.has(key)) map.set(key, { subject, chapter, exams: new Map() });
+                const g = map.get(key);
+                if (!g.exams.has(exam)) g.exams.set(exam, []);
+                g.exams.get(exam).push(idx);
+            });
+            const groups = [...map.values()].map(g => ({
+                subject: g.subject,
+                chapter: g.chapter,
+                exams: [...g.exams.entries()]
+                    .map(([title, idxs]) => ({ title, idxs }))
+                    .sort((a, b) => extractNumber(a.title) - extractNumber(b.title))
+            }));
+            groups.sort((a, b) => {
+                const au = a.subject === 'Chưa phân loại', bu = b.subject === 'Chưa phân loại';
+                if (au !== bu) return au ? 1 : -1;
+                if (a.subject !== b.subject) return a.subject.localeCompare(b.subject, 'vi');
+                return extractNumber(a.chapter) - extractNumber(b.chapter);
+            });
+            return groups;
+        }
+
         function renderMistakes() {
             const container = document.getElementById('mistakes-container');
+            const btnReview = document.getElementById('btn-review-mistakes');
+            const btnDelAll = document.getElementById('btn-delete-all-mistakes');
             if (userMistakes.length === 0) {
-                container.innerHTML = `<div class="bg-white p-8 rounded-2xl text-center text-slate-400 col-span-2">Chưa có câu sai nào cần ôn tập.</div>`;
-                document.getElementById('btn-review-mistakes').classList.add('hidden');
+                mistakeGroups = [];
+                container.innerHTML = `<div class="bg-white p-8 rounded-2xl text-center text-slate-400">Chưa có câu sai nào cần ôn tập.</div>`;
+                btnReview.classList.add('hidden');
+                btnDelAll.classList.add('hidden');
                 return;
             }
-            document.getElementById('btn-review-mistakes').classList.remove('hidden');
+            btnReview.classList.remove('hidden');
+            btnDelAll.classList.remove('hidden');
+
+            mistakeGroups = buildMistakeGroups();
             let html = '';
-            userMistakes.forEach((m, idx) => {
-                html += `<div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3"><div class="flex justify-between items-start"><span class="bg-[#FFF5F8] text-[#D6336C] font-semibold px-3 py-1 rounded-lg text-xs border border-[#FFB6C1]">Câu sai #${idx + 1}</span><button onclick="removeMistake(${idx})" class="text-slate-400 hover:text-[#D6336C] text-xs">Đã thuộc (Xóa)</button></div><h4 class="font-semibold text-slate-900 text-sm whitespace-pre-line">${fmt(m.questionText)}</h4><div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">`;
-                m.options.forEach((opt, oIdx) => {
-                    let isRight = oIdx === m.correctAnswer;
-                    html += `<div class="p-2.5 rounded-xl border whitespace-pre-line ${isRight ? "bg-emerald-50 border-emerald-500 text-emerald-900 font-medium" : "bg-slate-50 border-slate-200 text-slate-600"}">${String.fromCharCode(65 + oIdx)}. ${fmt(optText(opt))}</div>`;
+            mistakeGroups.forEach((g, gi) => {
+                const total = g.exams.reduce((n, e) => n + e.idxs.length, 0);
+                const title = g.chapter ? `${esc(g.subject)} › ${esc(g.chapter)}` : esc(g.subject);
+                html += `
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                        <div class="bg-[#FFF5F8] px-5 py-3 flex flex-wrap justify-between items-center gap-2 border-b border-[#FFB6C1]/30">
+                            <h3 class="font-bold text-slate-900 text-sm md:text-base"><i class="fa-solid fa-bookmark text-[#D6336C] mr-2"></i>${title} <span class="ml-1 text-xs font-semibold text-[#D6336C] bg-white border border-[#FFB6C1] rounded-full px-2 py-0.5">${total} câu</span></h3>
+                            <div class="flex items-center gap-2">
+                                <button onclick="startMistakeReview(${gi})" class="text-xs bg-[#D6336C] hover:bg-[#FF4081] text-white px-3 py-1.5 rounded-lg font-medium transition"><i class="fa-solid fa-rotate-right mr-1"></i> Luyện chương</button>
+                                <button onclick="deleteMistakeGroup(${gi}, -1)" class="text-xs text-rose-600 hover:bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-lg font-medium transition"><i class="fa-solid fa-trash mr-1"></i> Xóa chương</button>
+                            </div>
+                        </div>
+                        <div class="p-4 space-y-5">`;
+
+                g.exams.forEach((ex, ei) => {
+                    html += `
+                        <div class="space-y-3">
+                            <div class="flex flex-wrap justify-between items-center gap-2">
+                                <h4 class="font-semibold text-slate-700 text-sm"><i class="fa-solid fa-file-lines text-[#FF4081] mr-1.5"></i>${esc(ex.title)} <span class="text-xs text-slate-400 font-normal">(${ex.idxs.length} câu)</span></h4>
+                                <div class="flex items-center gap-2">
+                                    <button onclick="startMistakeReview(${gi}, ${ei})" class="text-xs text-[#D6336C] hover:bg-[#FFF5F8] border border-[#FFB6C1] px-2.5 py-1 rounded-lg font-medium transition">Luyện bài này</button>
+                                    <button onclick="deleteMistakeGroup(${gi}, ${ei})" class="text-xs text-slate-500 hover:text-rose-600 px-2 py-1 rounded-lg transition">Xóa bài</button>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">`;
+                    ex.idxs.forEach((idx, n) => {
+                        const m = userMistakes[idx];
+                        html += `<div class="bg-white p-4 rounded-2xl border border-slate-200 space-y-3"><div class="flex justify-between items-start"><span class="bg-[#FFF5F8] text-[#D6336C] font-semibold px-3 py-1 rounded-lg text-xs border border-[#FFB6C1]">Câu sai #${n + 1}</span><button onclick="removeMistake(${idx})" class="text-slate-400 hover:text-[#D6336C] text-xs">Đã thuộc (Xóa)</button></div><h4 class="font-semibold text-slate-900 text-sm whitespace-pre-line">${fmt(m.questionText)}</h4><div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">`;
+                        m.options.forEach((opt, oIdx) => {
+                            const isRight = oIdx === m.correctAnswer;
+                            html += `<div class="p-2.5 rounded-xl border whitespace-pre-line ${isRight ? "bg-emerald-50 border-emerald-500 text-emerald-900 font-medium" : "bg-slate-50 border-slate-200 text-slate-600"}">${String.fromCharCode(65 + oIdx)}. ${fmt(optText(opt))}</div>`;
+                        });
+                        html += `</div></div>`;
+                    });
+                    html += `</div></div>`;
                 });
                 html += `</div></div>`;
             });
@@ -1836,11 +1912,44 @@
             renderMistakes();
         }
 
-        function startMistakeReview() {
+        function deleteAllMistakes() {
             if (userMistakes.length === 0) return;
+            if (!confirm('Xóa TOÀN BỘ ' + userMistakes.length + ' câu sai trên thiết bị này? Không thể hoàn tác.')) return;
+            userMistakes = [];
+            saveMistakes();
+            renderMistakes();
+            toast('Đã xóa toàn bộ câu sai.');
+        }
+
+        // ei = -1: xóa cả chương; ei >= 0: xóa một bài trong chương
+        function deleteMistakeGroup(gi, ei) {
+            const g = mistakeGroups[gi];
+            if (!g) return;
+            const idxs = ei < 0 ? g.exams.flatMap(e => e.idxs) : (g.exams[ei] ? g.exams[ei].idxs : []);
+            if (idxs.length === 0) return;
+            const label = ei < 0 ? 'chương này' : 'bài "' + g.exams[ei].title + '"';
+            if (!confirm('Xóa ' + idxs.length + ' câu sai của ' + label + '?')) return;
+            const drop = new Set(idxs);
+            userMistakes = userMistakes.filter((_, i) => !drop.has(i));
+            saveMistakes();
+            renderMistakes();
+        }
+
+        // Không truyền tham số = luyện tất cả; (gi) = cả chương; (gi, ei) = một bài
+        function startMistakeReview(gi, ei) {
+            if (userMistakes.length === 0) return;
+            let list = userMistakes;
+            let title = "Ôn tập câu sai";
+            const g = (gi !== undefined) ? mistakeGroups[gi] : null;
+            if (g) {
+                const hasExam = (ei !== undefined && ei >= 0 && g.exams[ei]);
+                const idxs = hasExam ? g.exams[ei].idxs : g.exams.flatMap(e => e.idxs);
+                list = idxs.map(i => userMistakes[i]);
+                title = "Ôn câu sai: " + (hasExam ? g.exams[ei].title : (g.chapter || g.subject));
+            }
             examMode = 'mistakes';
             currentExamRef = null;
-            currentExam = { title: "Ôn tập câu sai", questions: JSON.parse(JSON.stringify(userMistakes)) };
+            currentExam = { title: title, questions: JSON.parse(JSON.stringify(list)) };
             document.getElementById('exam-title-header').innerText = currentExam.title;
             document.getElementById('exam-badge-subject').innerText = "Sổ tay câu sai";
             activeQuestions = buildActiveQuestions(currentExam.questions);
