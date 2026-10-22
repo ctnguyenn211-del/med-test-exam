@@ -169,6 +169,7 @@
                 <div><h2 class="text-2xl font-bold text-slate-900">Sổ Tay Ôn Tập Câu Sai</h2><p class="text-sm text-slate-500">Lưu trữ các câu làm sai trên thiết bị này, gộp theo môn / chương / bài.</p></div>
                 <div class="flex flex-wrap gap-2">
                     <button onclick="startMistakeReview()" id="btn-review-mistakes" class="bg-[#D6336C] hover:bg-[#FF4081] text-white px-5 py-2.5 rounded-xl font-medium text-sm transition shadow-sm flex items-center"><i class="fa-solid fa-rotate-right mr-2"></i> Luyện lại tất cả</button>
+                    <button onclick="exportMistakes()" id="btn-export-mistakes" class="bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 px-5 py-2.5 rounded-xl font-medium text-sm transition flex items-center"><i class="fa-solid fa-file-excel mr-2"></i> Xuất câu sai (Excel)</button>
                     <button onclick="deleteAllMistakes()" id="btn-delete-all-mistakes" class="bg-white hover:bg-rose-50 text-rose-600 border border-rose-300 px-5 py-2.5 rounded-xl font-medium text-sm transition flex items-center"><i class="fa-solid fa-trash mr-2"></i> Xóa toàn bộ câu sai</button>
                 </div>
             </div>
@@ -1717,6 +1718,7 @@
             let q = activeQuestions[currentQuestionIndex];
 
             if (optIdx !== q.correctAnswer) {
+                const chosenText = optText(q.options[optIdx]);   // nội dung đáp án đã chọn (không phụ thuộc thứ tự đảo)
                 if (!userMistakes.some(m => m.questionText === q.questionText)) {
                     const { _src, _perm, ...clean } = q;   // không lưu thông tin nội bộ của việc đảo
                     // Ghi nhớ nguồn (môn / chương / bài) để gộp nhóm trong sổ tay câu sai
@@ -1725,8 +1727,12 @@
                         const loc = findExam(currentExamRef.sId, currentExamRef.cId, currentExamRef.eId);
                         if (loc) srcInfo = { srcSubject: loc.s.name, srcChapter: loc.c.chapterName, srcExam: loc.e.title };
                     }
-                    userMistakes.push({ ...clean, ...srcInfo, dateAdded: new Date().toISOString() });
+                    userMistakes.push({ ...clean, ...srcInfo, userChoice: chosenText, dateAdded: new Date().toISOString() });
                     saveMistakes();
+                } else {
+                    // Câu sai cũ chưa có đáp án đã chọn: bổ sung khi làm sai lại
+                    const existing = userMistakes.find(m => m.questionText === q.questionText);
+                    if (existing && !existing.userChoice) { existing.userChoice = chosenText; saveMistakes(); }
                 }
             }
 
@@ -1853,15 +1859,18 @@
             const container = document.getElementById('mistakes-container');
             const btnReview = document.getElementById('btn-review-mistakes');
             const btnDelAll = document.getElementById('btn-delete-all-mistakes');
+            const btnExport = document.getElementById('btn-export-mistakes');
             if (userMistakes.length === 0) {
                 mistakeGroups = [];
                 container.innerHTML = `<div class="bg-white p-8 rounded-2xl text-center text-slate-400">Chưa có câu sai nào cần ôn tập.</div>`;
                 btnReview.classList.add('hidden');
                 btnDelAll.classList.add('hidden');
+                btnExport.classList.add('hidden');
                 return;
             }
             btnReview.classList.remove('hidden');
             btnDelAll.classList.remove('hidden');
+            btnExport.classList.remove('hidden');
 
             mistakeGroups = buildMistakeGroups();
             let html = '';
@@ -1919,6 +1928,47 @@
             saveMistakes();
             renderMistakes();
             toast('Đã xóa toàn bộ câu sai.');
+        }
+
+        // ----- Xuất câu sai ra CSV (mở được bằng Excel, có BOM để không lỗi tiếng Việt) -----
+        function plainText(s) { return String(s == null ? '' : s).replace(/\*\*/g, '').replace(/\*/g, '').trim(); }
+        function csvCell(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
+
+        function exportMistakes() {
+            if (userMistakes.length === 0) return alert('Chưa có câu sai nào để xuất.');
+            const rows = [['STT', 'Chủ đề', 'Phần', 'Tên bài', 'Câu hỏi', 'Đáp án đã chọn', 'Đáp án đúng']];
+            let n = 0;
+            buildMistakeGroups().forEach(g => g.exams.forEach(ex => ex.idxs.forEach(idx => {
+                const m = userMistakes[idx];
+                const opts = Array.isArray(m.options) ? m.options : [];
+                const letterOf = text => {
+                    const i = opts.findIndex(o => plainText(optText(o)) === plainText(text));
+                    return i >= 0 ? String.fromCharCode(65 + i) + '. ' : '';
+                };
+                const correctLetter = String.fromCharCode(65 + (m.correctAnswer || 0));
+                const correctText = correctLetter + '. ' + plainText(optText(opts[m.correctAnswer]));
+                const chosen = m.userChoice ? letterOf(m.userChoice) + plainText(m.userChoice) : '(chưa ghi nhận)';
+                rows.push([
+                    ++n,
+                    m.srcSubject || 'Chưa phân loại',
+                    m.srcChapter || '',
+                    m.srcExam || '',
+                    plainText(m.questionText),
+                    chosen,
+                    correctText
+                ]);
+            })));
+            const csv = '\uFEFF' + rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'cau_sai_vmu.csv';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 2000);
+            toast('Đã xuất ' + n + ' câu sai.');
         }
 
         // ei = -1: xóa cả chương; ei >= 0: xóa một bài trong chương
