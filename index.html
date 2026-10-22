@@ -1585,7 +1585,7 @@
                 <div class="flex justify-between items-start">
                     <span class="bg-[#FFF5F8] text-[#D6336C] font-semibold px-3 py-1 rounded-lg text-sm border border-[#FFB6C1]">Câu ${currentQuestionIndex + 1} / ${activeQuestions.length}</span>
                     <div class="flex items-center space-x-2">
-                        ${(isAdmin && examMode === 'exam') ? `<button onclick="openEditQuestionModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-2.5 py-1 rounded-lg font-medium transition flex items-center"><i class="fa-solid fa-pen-to-square mr-1.5 text-[#D6336C]"></i> Sửa câu hỏi</button>` : ''}
+                        ${(isAdmin && examMode === 'exam') ? `<button onclick="openEditQuestionModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-2.5 py-1 rounded-lg font-medium transition flex items-center"><i class="fa-solid fa-pen-to-square mr-1.5 text-[#D6336C]"></i> Sửa câu hỏi</button><button onclick="deleteCurrentQuestion()" class="bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 text-xs px-2.5 py-1 rounded-lg font-medium transition flex items-center"><i class="fa-solid fa-trash mr-1.5"></i> Xóa câu hỏi</button>` : ''}
                         ${unsureQuestions[currentQuestionIndex] ? '<span class="bg-[#FF4081] text-white text-xs px-2.5 py-1 rounded-full font-bold">Phân vân</span>' : ''}
                     </div>
                 </div>
@@ -1720,6 +1720,77 @@
                 toast('Đã cập nhật câu hỏi thành công!');
             } catch (e) {
                 alert('Lưu câu hỏi thất bại: ' + explainError(e));
+            } finally {
+                hideBusy();
+            }
+        }
+
+        // =====================================================================
+        //  XÓA CÂU HỎI (Admin) - xóa vĩnh viễn khỏi đề trên máy chủ
+        // =====================================================================
+        async function deleteCurrentQuestion() {
+            if (!requireWrite()) return;
+            if (examMode !== 'exam' || !currentExamRef) return;
+            const q = activeQuestions[currentQuestionIndex];
+            if (!q) return;
+            if (activeQuestions.length <= 1) return alert('Đây là câu hỏi cuối cùng của đề. Muốn bỏ cả đề, hãy dùng nút xóa bài học ở trang chủ.');
+            if (!confirm('Xóa vĩnh viễn câu ' + (currentQuestionIndex + 1) + ' khỏi đề này trên máy chủ? Không thể hoàn tác.')) return;
+
+            const { sId, cId, eId } = currentExamRef;
+            if (!findExam(sId, cId, eId)) return alert('Bài học này không còn tồn tại (có thể đã bị xóa từ máy khác).');
+
+            try {
+                showBusy('Đang xóa câu hỏi...');
+                const { db, doc, getDoc } = window.fb;
+                const snap = await getDoc(doc(db, COL, EXAM_DOC_PREFIX + eId));
+                if (!snap.exists()) throw new Error('Không tìm thấy nội dung đề trên máy chủ.');
+                const questions = snap.data().questions || [];
+                questions.forEach((item, i) => { if (item.id == null) item.id = i + 1; });
+                const pos = questions.findIndex(item => item.id === q.id);
+                if (pos < 0) throw new Error('Không tìm thấy câu hỏi này trong đề (đề có thể vừa được cập nhật từ máy khác). Hãy thoát ra và vào lại đề.');
+                questions.splice(pos, 1);
+                if (questions.length === 0) throw new Error('Không thể xóa câu hỏi cuối cùng của đề.');
+
+                const rev = Date.now();
+                await writeExamDoc(eId, questions, rev);
+                await mutateMeta(d => {
+                    const ds = d.subjects.find(x => x.id === sId);
+                    const dc = ds ? ds.chapters.find(x => x.id === cId) : null;
+                    const de = dc ? dc.exams.find(x => x.id === eId) : null;
+                    if (de) { de.rev = rev; de.qCount = questions.length; }
+                });
+                examCache[eId] = { rev: rev, questions: questions };
+
+                // Cập nhật bộ nhớ đang làm bài, giữ nguyên tiến độ các câu còn lại
+                const removedSrc = q._src;
+                if (currentExam.questions[removedSrc] && currentExam.questions[removedSrc].id === q.id) {
+                    currentExam.questions.splice(removedSrc, 1);
+                } else {
+                    const si = currentExam.questions.findIndex(item => item.id === q.id);
+                    if (si >= 0) currentExam.questions.splice(si, 1);
+                }
+                activeQuestions.splice(currentQuestionIndex, 1);
+                activeQuestions.forEach(a => { if (a._src > removedSrc) a._src--; });
+
+                const shiftKeys = (obj) => {
+                    const out = {};
+                    Object.keys(obj).forEach(k => {
+                        const n = parseInt(k);
+                        if (n < currentQuestionIndex) out[n] = obj[k];
+                        else if (n > currentQuestionIndex) out[n - 1] = obj[k];
+                    });
+                    return out;
+                };
+                userAnswers = shiftKeys(userAnswers);
+                unsureQuestions = shiftKeys(unsureQuestions);
+                if (currentQuestionIndex >= activeQuestions.length) currentQuestionIndex = activeQuestions.length - 1;
+
+                renderQuestion();
+                renderPalette();
+                updateStats();
+                toast('Đã xóa câu hỏi.');
+            } catch (e) {
+                alert('Xóa câu hỏi thất bại: ' + explainError(e));
             } finally {
                 hideBusy();
             }
