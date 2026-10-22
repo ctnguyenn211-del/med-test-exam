@@ -2347,6 +2347,22 @@
             };
             reader.readAsText(file);
         }
+        // =====================================================================
+        //  SỬA LỖI CÔNG THỨC BỊ GẤP ĐÔI DẤU \  (\\( \\ge \\% ... -> \( \ge \% ...)
+        //  Bọc lại fmt / finishText / plainText nên không phải sửa từng hàm.
+        // =====================================================================
+        function fixBackslashes(s) {
+            return String(s == null ? '' : s)
+                .replace(/\\\\(?=[A-Za-z()\[\]%<>{}|,;:!&_^#$])/g, '\\');
+        }
+        (function () {
+            const origFmt = fmt;
+            const origFinish = finishText;
+            const origPlain = plainText;
+            fmt = function (s) { return origFmt(fixBackslashes(s)); };
+            finishText = function (s) { return origFinish(fixBackslashes(s)); };
+            plainText = function (s) { return origPlain(fixBackslashes(s)); };
+        })();
     </script>
 </body>
 </html>
