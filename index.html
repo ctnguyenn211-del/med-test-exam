@@ -363,11 +363,24 @@
             return esc(m);   // chưa tải được KaTeX: hiện nguyên văn
         }
 
+        // Đổi các lệnh LaTeX "trần" (không nằm trong $...$) thành ký tự thật: \rightarrow -> →, \leq -> ≤ ...
+        const LATEX_SYMBOLS = {
+            rightarrow: '→', to: '→', longrightarrow: '→', leftarrow: '←', gets: '←',
+            leftrightarrow: '↔', Rightarrow: '⇒', Leftarrow: '⇐', Leftrightarrow: '⇔',
+            uparrow: '↑', downarrow: '↓', rightleftharpoons: '⇌',
+            geq: '≥', ge: '≥', leq: '≤', le: '≤', neq: '≠', ne: '≠', approx: '≈',
+            pm: '±', times: '×', cdot: '·', degree: '°'
+        };
+        const LATEX_SYM_RE = new RegExp('\\\\(' + Object.keys(LATEX_SYMBOLS).sort((a, b) => b.length - a.length).join('|') + ')(?![A-Za-z])', 'g');
+        function latexSymbols(s) {
+            return String(s == null ? '' : s).replace(LATEX_SYM_RE, (_, name) => LATEX_SYMBOLS[name]);
+        }
+
         // Hiển thị văn bản có định dạng: **đậm**, *nghiêng*, công thức $...$. Xuống dòng do CSS "whitespace-pre-line" đảm nhiệm.
         // Luôn escape HTML trước nên an toàn; dấu * lẻ/thiếu cặp sẽ tự đóng ở cuối chuỗi.
         function fmt(s) {
             const store = [];
-            const raw = protectMath(String(s == null ? '' : s).trim(), store);
+            const raw = latexSymbols(protectMath(String(s == null ? '' : s).trim(), store));   // công thức $...$ đã được bảo vệ nên không bị đổi
             const t = esc(raw);
             let out = '', bold = false, ital = false;
             for (let k = 0; k < t.length; k++) {
@@ -1931,7 +1944,7 @@
         }
 
         // ----- Xuất câu sai ra CSV (mở được bằng Excel, có BOM để không lỗi tiếng Việt) -----
-        function plainText(s) { return String(s == null ? '' : s).replace(/\*\*/g, '').replace(/\*/g, '').trim(); }
+        function plainText(s) { return latexSymbols(String(s == null ? '' : s)).replace(/\*\*/g, '').replace(/\*/g, '').trim(); }
         function csvCell(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
 
         function exportMistakes() {
