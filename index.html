@@ -127,6 +127,19 @@
 
             <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 <div class="space-y-6 lg:col-span-1">
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+                        <h4 class="font-bold text-slate-800 text-sm uppercase tracking-wider border-b pb-2"><i class="fa-solid fa-hourglass-half mr-2 text-[#D6336C]"></i> Đếm ngược giờ</h4>
+                        <div id="timer-display" class="text-4xl font-bold text-center font-mono text-slate-800">30:00</div>
+                        <div class="flex items-center justify-between gap-2 text-sm">
+                            <span class="text-slate-600">Thời gian (phút):</span>
+                            <input type="number" id="timer-minutes" min="1" max="600" value="30" onchange="onTimerMinutesChange()" class="w-20 px-2 py-1 rounded-lg border border-slate-200 focus:outline-none focus:border-[#D6336C] text-center">
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="timer-btn-start" onclick="timerToggle()" class="flex-1 bg-[#D6336C] hover:bg-[#FF4081] text-white py-2 rounded-xl text-sm font-medium transition">Bắt đầu</button>
+                            <button onclick="timerReset()" class="px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-xl text-sm font-medium transition">Đặt lại</button>
+                        </div>
+                    </div>
+
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
                         <h4 class="font-bold text-slate-800 text-sm uppercase tracking-wider border-b pb-2"><i class="fa-solid fa-chart-pie mr-2 text-[#D6336C]"></i> Kết quả</h4>
                         <div class="space-y-3 text-sm">
@@ -349,14 +362,17 @@
         }
 
         // Công thức LaTeX: $...$ (cùng dòng) hoặc $$...$$. Bỏ qua trường hợp "$5 và $10" (sau $ mở là khoảng trắng / trước $ đóng là khoảng trắng / sau $ đóng là số)
-        const MATH_RE = /\$\$[\s\S]+?\$\$|\$(?!\s)[^$\n]*?[^\s$]\$(?!\d)/g;
+        // Hỗ trợ thêm \( ... \) và \[ ... \] (kiểu LaTeX), ví dụ: \(> 50%\)
+        const MATH_RE = /\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|\$(?!\s)[^$\n]*?[^\s$]\$(?!\d)/g;
         const MATH_PH = /\uE010(\d+)\uE011/g;
         function protectMath(s, store) {
             return s.replace(MATH_RE, m => { store.push(m); return '\uE010' + (store.length - 1) + '\uE011'; });
         }
         function renderMath(m) {
-            const display = m.startsWith('$$');
-            const tex = (display ? m.slice(2, -2) : m.slice(1, -1)).trim();
+            const display = m.startsWith('$$') || m.startsWith('\\[');
+            const d = (display || m.startsWith('\\(')) ? 2 : 1;
+            // Ký tự % là dấu chú thích trong LaTeX nên phải đổi thành \% để hiển thị đúng ("50%")
+            const tex = m.slice(d, m.length - d).trim().replace(/\\?%/g, '\\%');
             try {
                 if (window.katex) return window.katex.renderToString(tex, { throwOnError: false, displayMode: display });
             } catch (e) {}
@@ -474,6 +490,7 @@
                 updateNavbarState();
                 loadMistakes();
                 loadSettings();
+                loadTimerSettings();
                 loadCachedMeta();
                 renderHome();
                 if (!window.fb) setSyncStatus('offline');
@@ -773,6 +790,8 @@
         //  ĐIỀU HƯỚNG
         // =====================================================================
         function switchTab(tabId) {
+            if (tabId !== 'exam') { timerPause(); examViewActive = false; updateMistakeBadge(); }
+            else { examViewActive = true; }
             document.getElementById('tab-home').classList.add('hidden');
             document.getElementById('tab-exam').classList.add('hidden');
             document.getElementById('tab-mistakes').classList.add('hidden');
@@ -1560,6 +1579,7 @@
                 currentQuestionIndex = 0;
                 userAnswers = {};
                 unsureQuestions = {};
+                timerReset();
                 switchTab('exam');
                 renderQuestion();
                 renderPalette();
@@ -1840,7 +1860,8 @@
             activeQuestions.forEach((_, idx) => {
                 let bg = "bg-slate-100 text-slate-700 hover:bg-slate-200";
                 if (userAnswers[idx] !== undefined) {
-                    bg = (userAnswers[idx] === activeQuestions[idx].correctAnswer) ? "bg-emerald-600 text-white" : "bg-rose-600 text-white";
+                    if (!settings.showAnswer) bg = "bg-sky-500 text-white";   // đã làm nhưng chưa tiết lộ đúng/sai
+                    else bg = (userAnswers[idx] === activeQuestions[idx].correctAnswer) ? "bg-emerald-600 text-white" : "bg-rose-600 text-white";
                 }
                 if (unsureQuestions[idx]) bg = "bg-[#FF4081] text-white";
                 if (idx === currentQuestionIndex) bg += " ring-2 ring-[#D6336C]";
@@ -1855,8 +1876,115 @@
             Object.keys(userAnswers).forEach(idx => { if (activeQuestions[idx] && userAnswers[idx] === activeQuestions[idx].correctAnswer) correct++; });
             let score = activeQuestions.length > 0 ? (correct / activeQuestions.length) * 10 : 0;
             document.getElementById('stat-completed').innerText = `${completed}/${activeQuestions.length}`;
-            document.getElementById('stat-correct').innerText = correct;
-            document.getElementById('stat-score').innerText = score.toFixed(2);
+            // Khi tắt "Hiện đáp án ngay" thì ẩn số câu đúng và điểm để không lộ kết quả
+            const reveal = settings.showAnswer;
+            document.getElementById('stat-correct').innerText = reveal ? correct : '—';
+            document.getElementById('stat-score').innerText = reveal ? score.toFixed(2) : '—';
+        }
+
+        // =====================================================================
+        //  ĐẾM NGƯỢC GIỜ
+        //  Dùng mốc thời gian kết thúc (Date.now) nên vẫn chạy đúng khi tab bị trình duyệt làm chậm.
+        //  Rời khỏi màn hình làm bài thì đồng hồ tự tạm dừng. Hết giờ: báo âm thanh + hiện kết quả.
+        // =====================================================================
+        let timerRemaining = 0;      // số giây còn lại
+        let timerEndAt = 0;          // mốc kết thúc (ms)
+        let timerInterval = null;
+        let timerRunning = false;
+        let examViewActive = false;  // đang ở màn hình làm bài?
+
+        function pad2(n) { return String(n).padStart(2, '0'); }
+        function formatTime(sec) {
+            const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+            return h > 0 ? h + ':' + pad2(m) + ':' + pad2(s) : pad2(m) + ':' + pad2(s);
+        }
+        function getTimerMinutes() {
+            const el = document.getElementById('timer-minutes');
+            const v = el ? parseFloat(el.value) : NaN;
+            return (v > 0) ? Math.min(v, 600) : 0;
+        }
+        function renderTimer() {
+            const disp = document.getElementById('timer-display');
+            const btn = document.getElementById('timer-btn-start');
+            if (!disp || !btn) return;
+            disp.innerText = formatTime(timerRemaining);
+            const urgent = timerRunning && timerRemaining <= 60;
+            disp.className = 'text-4xl font-bold text-center font-mono ' + (urgent ? 'text-rose-600' : 'text-slate-800');
+            const full = Math.round((getTimerMinutes() || 30) * 60);
+            btn.innerText = timerRunning ? 'Tạm dừng' : ((timerRemaining > 0 && timerRemaining < full) ? 'Tiếp tục' : 'Bắt đầu');
+        }
+        function timerBeep() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const o = ctx.createOscillator();
+                const g = ctx.createGain();
+                o.connect(g); g.connect(ctx.destination);
+                o.frequency.value = 880; g.gain.value = 0.2;
+                o.start(); o.stop(ctx.currentTime + 0.7);
+            } catch (e) {}
+        }
+        function timerToggle() {
+            if (timerRunning) { timerPause(); return; }
+            if (timerRemaining <= 0) {
+                const m = getTimerMinutes();
+                if (!m) return alert('Hãy nhập số phút lớn hơn 0.');
+                timerRemaining = Math.round(m * 60);
+            }
+            timerEndAt = Date.now() + timerRemaining * 1000;
+            timerRunning = true;
+            clearInterval(timerInterval);
+            timerInterval = setInterval(timerTick, 250);
+            renderTimer();
+        }
+        function timerPause() {
+            if (!timerRunning) return;
+            timerRemaining = Math.max(0, Math.ceil((timerEndAt - Date.now()) / 1000));
+            clearInterval(timerInterval);
+            timerInterval = null;
+            timerRunning = false;
+            renderTimer();
+        }
+        function timerTick() {
+            timerRemaining = Math.max(0, Math.ceil((timerEndAt - Date.now()) / 1000));
+            renderTimer();
+            if (timerRemaining <= 0) timerFinish();
+        }
+        function timerFinish() {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            timerRunning = false;
+            timerRemaining = 0;
+            renderTimer();
+            timerBeep();
+            toast('Hết giờ!', 'error');
+            setTimeout(function () {
+                let correct = 0;
+                Object.keys(userAnswers).forEach(i => { if (activeQuestions[i] && userAnswers[i] === activeQuestions[i].correctAnswer) correct++; });
+                const total = activeQuestions.length;
+                const score = total > 0 ? (correct / total) * 10 : 0;
+                alert('HẾT GIỜ!\nĐã làm: ' + Object.keys(userAnswers).length + '/' + total + ' câu\nĐúng: ' + correct + '\nĐiểm: ' + score.toFixed(2));
+            }, 100);
+        }
+        function timerReset() {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            timerRunning = false;
+            timerRemaining = Math.round((getTimerMinutes() || 30) * 60);
+            renderTimer();
+        }
+        function onTimerMinutesChange() {
+            let m = getTimerMinutes();
+            if (!m) { m = 30; document.getElementById('timer-minutes').value = m; alert('Số phút phải lớn hơn 0, đã đặt lại 30 phút.'); }
+            try { localStorage.setItem('vmu_timer_minutes', String(m)); } catch (e) {}
+            if (!timerRunning) { timerRemaining = Math.round(m * 60); renderTimer(); }
+        }
+        function loadTimerSettings() {
+            let m = 30;
+            try { const v = parseFloat(localStorage.getItem('vmu_timer_minutes')); if (v > 0) m = Math.min(v, 600); } catch (e) {}
+            const el = document.getElementById('timer-minutes');
+            if (el) el.value = m;
+            timerRemaining = Math.round(m * 60);
+            renderTimer();
         }
 
         // ----- Cài đặt: lưu vào localStorage + luôn đồng bộ với ô tick trên giao diện -----
@@ -1893,7 +2021,7 @@
             syncSettingsToUI();
         }
 
-        function toggleSettingShowAnswer(el) { settings.showAnswer = el.checked; saveSettings(); renderQuestion(); }
+        function toggleSettingShowAnswer(el) { settings.showAnswer = el.checked; saveSettings(); renderQuestion(); renderPalette(); updateStats(); updateMistakeBadge(); }
         function toggleSettingAutoNext(el) { settings.autoNext = el.checked; saveSettings(); }
         function toggleShuffleQuestions(el) { settings.shuffleQ = el.checked; saveSettings(); reshuffleNow(); }
         function toggleShuffleAnswers(el) { settings.shuffleA = el.checked; saveSettings(); reshuffleNow(); }
@@ -1926,6 +2054,7 @@
 
         function updateMistakeBadge() {
             const badge = document.getElementById('badge-mistakes');
+            if (examViewActive && !settings.showAnswer) return;   // đang ẩn đáp án: không để số câu sai làm lộ kết quả
             if (userMistakes.length > 0) {
                 badge.innerText = userMistakes.length;
                 badge.classList.remove('hidden');
@@ -2041,7 +2170,7 @@
         }
 
         // ----- Xuất câu sai ra CSV (mở được bằng Excel, có BOM để không lỗi tiếng Việt) -----
-        function plainText(s) { return latexSymbols(String(s == null ? '' : s)).replace(/\*\*/g, '').replace(/\*/g, '').trim(); }
+        function plainText(s) { return latexSymbols(String(s == null ? '' : s)).replace(/\\[()\[\]]/g, '').replace(/\*\*/g, '').replace(/\*/g, '').trim(); }
         function csvCell(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
 
         function exportMistakes() {
@@ -2114,6 +2243,7 @@
             document.getElementById('exam-badge-subject').innerText = "Sổ tay câu sai";
             activeQuestions = buildActiveQuestions(currentExam.questions);
             currentQuestionIndex = 0; userAnswers = {}; unsureQuestions = {};
+            timerReset();
             switchTab('exam');
             renderQuestion(); renderPalette(); updateStats();
         }
