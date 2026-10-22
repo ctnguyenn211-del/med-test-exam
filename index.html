@@ -376,7 +376,8 @@
             try {
                 if (window.katex) return window.katex.renderToString(tex, { throwOnError: false, displayMode: display });
             } catch (e) {}
-            return esc(m);   // chưa tải được KaTeX: hiện nguyên văn
+            // Chưa tải được KaTeX (mạng chặn CDN...): vẫn hiện chữ dễ đọc, bỏ dấu \( \) và \text{...}
+            return esc(latexSymbols(tex.replace(/\\%/g, '%').replace(/\\text\{([^}]*)\}/g, '$1')));
         }
 
         // Đổi các lệnh LaTeX "trần" (không nằm trong $...$) thành ký tự thật: \rightarrow -> →, \leq -> ≤ ...
